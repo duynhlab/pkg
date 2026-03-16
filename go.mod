@@ -1,6 +1,6 @@
 module github.com/duynhne/pkg
 
-go 1.25.5
+go 1.25.8
 
 require (
 	github.com/chainguard-dev/clog v1.8.0
