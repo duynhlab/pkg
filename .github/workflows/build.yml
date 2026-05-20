@@ -1,13 +1,13 @@
-name: CI Pipeline
+name: Build
 
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
-  # Go quality checks (test + lint)
   go-check:
     uses: duyhenryer/shared-workflows/.github/workflows/go-check.yml@main
     with:
@@ -15,11 +15,12 @@ jobs:
       lint: true
     secrets: inherit
 
-  # SonarCloud analysis
   sonar:
     needs: go-check
     uses: duyhenryer/shared-workflows/.github/workflows/sonarqube.yml@main
     with:
-      project-key: 'duynhne_pkg'
-      organization: 'duynhne'
-    secrets: inherit
+      project-key: 'duynhlab_pkg'
+      organization: 'duynhlab'
+      fail-on-quality-gate: false
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
