@@ -1,0 +1,26 @@
+name: Check
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  go-check:
+    uses: duyhenryer/shared-workflows/.github/workflows/go-check.yml@main
+    with:
+      command-test: 'go test -race -coverprofile=coverage.out ./...'
+      lint: true
+    secrets: inherit
+
+  sonar:
+    needs: go-check
+    uses: duyhenryer/shared-workflows/.github/workflows/sonarqube.yml@main
+    with:
+      project-key: 'duynhlab_pkg'
+      organization: 'duynhlab'
+      fail-on-quality-gate: false
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
