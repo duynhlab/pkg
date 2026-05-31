@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package shipping.v1;
+
+option go_package = "github.com/duynhne/pkg/proto/shipping/v1;shippingv1";
+
+// ShippingService is the internal (east-west) contract for the shipping
+// service. It mirrors the existing HTTP route
+//   GET /shipping/v1/internal/orders/{order_id}
+// used by order-service for order-details aggregation. This is the gRPC
+// Phase 1 pilot path (see homelab/docs/api/grpc-internal-comms.md).
+service ShippingService {
+  // GetShipmentByOrder returns the shipment for an order. The response
+  // shipment is unset when no shipment exists for the order yet (the HTTP
+  // route returns a null shipment in that case).
+  rpc GetShipmentByOrder(GetShipmentByOrderRequest) returns (GetShipmentByOrderResponse);
+}
+
+message GetShipmentByOrderRequest {
+  string order_id = 1;
+}
+
+message GetShipmentByOrderResponse {
+  // Unset when the order has no shipment yet.
+  Shipment shipment = 1;
+}
+
+// Shipment mirrors the shipping service's JSON shipment shape 1:1 so the gRPC
+// and HTTP paths produce identical aggregated responses. Timestamps are the
+// service's preformatted RFC3339 strings (empty when unset) rather than
+// google.protobuf.Timestamp, to avoid parse/format round-tripping that could
+// change the wire value.
+message Shipment {
+  string id = 1;
+  string order_id = 2;
+  string tracking_number = 3;
+  string carrier = 4;
+  string status = 5;
+  string estimated_delivery = 6;
+  string created_at = 7;
+  string updated_at = 8;
+}

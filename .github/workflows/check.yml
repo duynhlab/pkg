@@ -15,6 +15,19 @@ jobs:
       lint: true
     secrets: inherit
 
+  # Protobuf contract checks for the gRPC modules under proto/.
+  # Lints the .proto style and fails the PR on a backward-incompatible change.
+  buf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bufbuild/buf-action@v1
+        with:
+          lint: true
+          format: true
+          breaking: true
+          breaking_against: 'https://github.com/duynhlab/pkg.git#branch=main'
+
   sonar:
     needs: go-check
     uses: duyhenryer/shared-workflows/.github/workflows/sonarqube.yml@main
