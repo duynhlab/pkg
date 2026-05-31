@@ -359,8 +359,8 @@ const file_notification_v1_notification_proto_rawDesc = "" +
 	"created_at\x18\a \x01(\tR\tcreatedAt2\xb7\x01\n" +
 	"\x13NotificationService\x12R\n" +
 	"\tSendEmail\x12!.notification.v1.SendEmailRequest\x1a\".notification.v1.SendEmailResponse\x12L\n" +
-	"\aSendSMS\x12\x1f.notification.v1.SendSMSRequest\x1a .notification.v1.SendSMSResponseB\xc2\x01\n" +
-	"\x13com.notification.v1B\x11NotificationProtoP\x01Z;github.com/duynhne/pkg/proto/notification/v1;notificationv1\xa2\x02\x03NXX\xaa\x02\x0fNotification.V1\xca\x02\x0fNotification\\V1\xe2\x02\x1bNotification\\V1\\GPBMetadata\xea\x02\x10Notification::V1b\x06proto3"
+	"\aSendSMS\x12\x1f.notification.v1.SendSMSRequest\x1a .notification.v1.SendSMSResponseB\xc3\x01\n" +
+	"\x13com.notification.v1B\x11NotificationProtoP\x01Z<github.com/duynhlab/pkg/proto/notification/v1;notificationv1\xa2\x02\x03NXX\xaa\x02\x0fNotification.V1\xca\x02\x0fNotification\\V1\xe2\x02\x1bNotification\\V1\\GPBMetadata\xea\x02\x10Notification::V1b\x06proto3"
 
 var (
 	file_notification_v1_notification_proto_rawDescOnce sync.Once

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package notification.v1;
 
-option go_package = "github.com/duynhne/pkg/proto/notification/v1;notificationv1";
+option go_package = "github.com/duynhlab/pkg/proto/notification/v1;notificationv1";
 
 // NotificationService is the internal (east-west) contract for publishing
 // notifications. It mirrors the notification service's internal send endpoints.

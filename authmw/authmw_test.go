@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	authv1 "github.com/duynhne/pkg/proto/auth/v1"
+	authv1 "github.com/duynhlab/pkg/proto/auth/v1"
 	"github.com/gin-gonic/gin"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

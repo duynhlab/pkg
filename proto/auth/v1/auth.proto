@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package auth.v1;
 
-option go_package = "github.com/duynhne/pkg/proto/auth/v1;authv1";
+option go_package = "github.com/duynhlab/pkg/proto/auth/v1;authv1";
 
 // AuthService is the internal (east-west) contract for session-token
 // validation. It mirrors the HTTP route GET /auth/v1/private/me that every

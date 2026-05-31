@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package shipping.v1;
 
-option go_package = "github.com/duynhne/pkg/proto/shipping/v1;shippingv1";
+option go_package = "github.com/duynhlab/pkg/proto/shipping/v1;shippingv1";
 
 // ShippingService is the internal (east-west) contract for the shipping
 // service. It mirrors the existing HTTP route

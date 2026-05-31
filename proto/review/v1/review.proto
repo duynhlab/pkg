@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package review.v1;
 
-option go_package = "github.com/duynhne/pkg/proto/review/v1;reviewv1";
+option go_package = "github.com/duynhlab/pkg/proto/review/v1;reviewv1";
 
 // ReviewService is the internal (east-west) contract for fetching a product's
 // reviews. It mirrors GET /review/v1/public/reviews?product_id=… used by
