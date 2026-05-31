@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package review.v1;
+
+option go_package = "github.com/duynhne/pkg/proto/review/v1;reviewv1";
+
+// ReviewService is the internal (east-west) contract for fetching a product's
+// reviews. It mirrors GET /review/v1/public/reviews?product_id=… used by
+// product-service for product-details aggregation.
+service ReviewService {
+  // GetProductReviews returns all reviews for a product. An empty list (not an
+  // error) is returned when the product has no reviews.
+  rpc GetProductReviews(GetProductReviewsRequest) returns (GetProductReviewsResponse);
+}
+
+message GetProductReviewsRequest {
+  string product_id = 1;
+}
+
+message GetProductReviewsResponse {
+  repeated Review reviews = 1;
+}
+
+// Review mirrors the review service's JSON review shape 1:1. created_at is the
+// service's preformatted RFC3339 string (empty when unset).
+message Review {
+  string id = 1;
+  string product_id = 2;
+  string user_id = 3;
+  int32 rating = 4;
+  string title = 5;
+  string comment = 6;
+  string created_at = 7;
+}
