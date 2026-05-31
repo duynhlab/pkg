@@ -224,8 +224,8 @@ const file_review_v1_review_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\a \x01(\tR\tcreatedAt2o\n" +
 	"\rReviewService\x12^\n" +
-	"\x11GetProductReviews\x12#.review.v1.GetProductReviewsRequest\x1a$.review.v1.GetProductReviewsResponseB\x92\x01\n" +
-	"\rcom.review.v1B\vReviewProtoP\x01Z/github.com/duynhne/pkg/proto/review/v1;reviewv1\xa2\x02\x03RXX\xaa\x02\tReview.V1\xca\x02\tReview\\V1\xe2\x02\x15Review\\V1\\GPBMetadata\xea\x02\n" +
+	"\x11GetProductReviews\x12#.review.v1.GetProductReviewsRequest\x1a$.review.v1.GetProductReviewsResponseB\x93\x01\n" +
+	"\rcom.review.v1B\vReviewProtoP\x01Z0github.com/duynhlab/pkg/proto/review/v1;reviewv1\xa2\x02\x03RXX\xaa\x02\tReview.V1\xca\x02\tReview\\V1\xe2\x02\x15Review\\V1\\GPBMetadata\xea\x02\n" +
 	"Review::V1b\x06proto3"
 
 var (

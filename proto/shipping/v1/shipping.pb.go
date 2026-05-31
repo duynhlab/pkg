@@ -236,8 +236,8 @@ const file_shipping_v1_shipping_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\b \x01(\tR\tupdatedAt2x\n" +
 	"\x0fShippingService\x12e\n" +
-	"\x12GetShipmentByOrder\x12&.shipping.v1.GetShipmentByOrderRequest\x1a'.shipping.v1.GetShipmentByOrderResponseB\xa2\x01\n" +
-	"\x0fcom.shipping.v1B\rShippingProtoP\x01Z3github.com/duynhne/pkg/proto/shipping/v1;shippingv1\xa2\x02\x03SXX\xaa\x02\vShipping.V1\xca\x02\vShipping\\V1\xe2\x02\x17Shipping\\V1\\GPBMetadata\xea\x02\fShipping::V1b\x06proto3"
+	"\x12GetShipmentByOrder\x12&.shipping.v1.GetShipmentByOrderRequest\x1a'.shipping.v1.GetShipmentByOrderResponseB\xa3\x01\n" +
+	"\x0fcom.shipping.v1B\rShippingProtoP\x01Z4github.com/duynhlab/pkg/proto/shipping/v1;shippingv1\xa2\x02\x03SXX\xaa\x02\vShipping.V1\xca\x02\vShipping\\V1\xe2\x02\x17Shipping\\V1\\GPBMetadata\xea\x02\fShipping::V1b\x06proto3"
 
 var (
 	file_shipping_v1_shipping_proto_rawDescOnce sync.Once

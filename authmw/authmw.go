@@ -9,8 +9,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/duynhne/pkg/grpcx"
-	authv1 "github.com/duynhne/pkg/proto/auth/v1"
+	"github.com/duynhlab/pkg/grpcx"
+	authv1 "github.com/duynhlab/pkg/proto/auth/v1"
 	"github.com/gin-gonic/gin"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

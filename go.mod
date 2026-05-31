@@ -1,4 +1,4 @@
-module github.com/duynhne/pkg
+module github.com/duynhlab/pkg
 
 go 1.25.8
 
