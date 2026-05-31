@@ -9,7 +9,6 @@ package shippingv1
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -111,6 +110,11 @@ func (x *GetShipmentByOrderResponse) GetShipment() *Shipment {
 	return nil
 }
 
+// Shipment mirrors the shipping service's JSON shipment shape 1:1 so the gRPC
+// and HTTP paths produce identical aggregated responses. Timestamps are the
+// service's preformatted RFC3339 strings (empty when unset) rather than
+// google.protobuf.Timestamp, to avoid parse/format round-tripping that could
+// change the wire value.
 type Shipment struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	Id                string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -118,9 +122,9 @@ type Shipment struct {
 	TrackingNumber    string                 `protobuf:"bytes,3,opt,name=tracking_number,json=trackingNumber,proto3" json:"tracking_number,omitempty"`
 	Carrier           string                 `protobuf:"bytes,4,opt,name=carrier,proto3" json:"carrier,omitempty"`
 	Status            string                 `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
-	EstimatedDelivery *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=estimated_delivery,json=estimatedDelivery,proto3" json:"estimated_delivery,omitempty"`
-	CreatedAt         *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt         *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	EstimatedDelivery string                 `protobuf:"bytes,6,opt,name=estimated_delivery,json=estimatedDelivery,proto3" json:"estimated_delivery,omitempty"`
+	CreatedAt         string                 `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt         string                 `protobuf:"bytes,8,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -190,47 +194,47 @@ func (x *Shipment) GetStatus() string {
 	return ""
 }
 
-func (x *Shipment) GetEstimatedDelivery() *timestamppb.Timestamp {
+func (x *Shipment) GetEstimatedDelivery() string {
 	if x != nil {
 		return x.EstimatedDelivery
 	}
-	return nil
+	return ""
 }
 
-func (x *Shipment) GetCreatedAt() *timestamppb.Timestamp {
+func (x *Shipment) GetCreatedAt() string {
 	if x != nil {
 		return x.CreatedAt
 	}
-	return nil
+	return ""
 }
 
-func (x *Shipment) GetUpdatedAt() *timestamppb.Timestamp {
+func (x *Shipment) GetUpdatedAt() string {
 	if x != nil {
 		return x.UpdatedAt
 	}
-	return nil
+	return ""
 }
 
 var File_shipping_v1_shipping_proto protoreflect.FileDescriptor
 
 const file_shipping_v1_shipping_proto_rawDesc = "" +
 	"\n" +
-	"\x1ashipping/v1/shipping.proto\x12\vshipping.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"6\n" +
+	"\x1ashipping/v1/shipping.proto\x12\vshipping.v1\"6\n" +
 	"\x19GetShipmentByOrderRequest\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\"O\n" +
 	"\x1aGetShipmentByOrderResponse\x121\n" +
-	"\bshipment\x18\x01 \x01(\v2\x15.shipping.v1.ShipmentR\bshipment\"\xd1\x02\n" +
+	"\bshipment\x18\x01 \x01(\v2\x15.shipping.v1.ShipmentR\bshipment\"\xfd\x01\n" +
 	"\bShipment\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
 	"\border_id\x18\x02 \x01(\tR\aorderId\x12'\n" +
 	"\x0ftracking_number\x18\x03 \x01(\tR\x0etrackingNumber\x12\x18\n" +
 	"\acarrier\x18\x04 \x01(\tR\acarrier\x12\x16\n" +
-	"\x06status\x18\x05 \x01(\tR\x06status\x12I\n" +
-	"\x12estimated_delivery\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\x11estimatedDelivery\x129\n" +
+	"\x06status\x18\x05 \x01(\tR\x06status\x12-\n" +
+	"\x12estimated_delivery\x18\x06 \x01(\tR\x11estimatedDelivery\x12\x1d\n" +
 	"\n" +
-	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"created_at\x18\a \x01(\tR\tcreatedAt\x12\x1d\n" +
 	"\n" +
-	"updated_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt2x\n" +
+	"updated_at\x18\b \x01(\tR\tupdatedAt2x\n" +
 	"\x0fShippingService\x12e\n" +
 	"\x12GetShipmentByOrder\x12&.shipping.v1.GetShipmentByOrderRequest\x1a'.shipping.v1.GetShipmentByOrderResponseB\xa2\x01\n" +
 	"\x0fcom.shipping.v1B\rShippingProtoP\x01Z3github.com/duynhne/pkg/proto/shipping/v1;shippingv1\xa2\x02\x03SXX\xaa\x02\vShipping.V1\xca\x02\vShipping\\V1\xe2\x02\x17Shipping\\V1\\GPBMetadata\xea\x02\fShipping::V1b\x06proto3"
@@ -252,20 +256,16 @@ var file_shipping_v1_shipping_proto_goTypes = []any{
 	(*GetShipmentByOrderRequest)(nil),  // 0: shipping.v1.GetShipmentByOrderRequest
 	(*GetShipmentByOrderResponse)(nil), // 1: shipping.v1.GetShipmentByOrderResponse
 	(*Shipment)(nil),                   // 2: shipping.v1.Shipment
-	(*timestamppb.Timestamp)(nil),      // 3: google.protobuf.Timestamp
 }
 var file_shipping_v1_shipping_proto_depIdxs = []int32{
 	2, // 0: shipping.v1.GetShipmentByOrderResponse.shipment:type_name -> shipping.v1.Shipment
-	3, // 1: shipping.v1.Shipment.estimated_delivery:type_name -> google.protobuf.Timestamp
-	3, // 2: shipping.v1.Shipment.created_at:type_name -> google.protobuf.Timestamp
-	3, // 3: shipping.v1.Shipment.updated_at:type_name -> google.protobuf.Timestamp
-	0, // 4: shipping.v1.ShippingService.GetShipmentByOrder:input_type -> shipping.v1.GetShipmentByOrderRequest
-	1, // 5: shipping.v1.ShippingService.GetShipmentByOrder:output_type -> shipping.v1.GetShipmentByOrderResponse
-	5, // [5:6] is the sub-list for method output_type
-	4, // [4:5] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	0, // 1: shipping.v1.ShippingService.GetShipmentByOrder:input_type -> shipping.v1.GetShipmentByOrderRequest
+	1, // 2: shipping.v1.ShippingService.GetShipmentByOrder:output_type -> shipping.v1.GetShipmentByOrderResponse
+	2, // [2:3] is the sub-list for method output_type
+	1, // [1:2] is the sub-list for method input_type
+	1, // [1:1] is the sub-list for extension type_name
+	1, // [1:1] is the sub-list for extension extendee
+	0, // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_shipping_v1_shipping_proto_init() }

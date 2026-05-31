@@ -2,8 +2,6 @@ syntax = "proto3";
 
 package shipping.v1;
 
-import "google/protobuf/timestamp.proto";
-
 option go_package = "github.com/duynhne/pkg/proto/shipping/v1;shippingv1";
 
 // ShippingService is the internal (east-west) contract for the shipping
@@ -27,13 +25,18 @@ message GetShipmentByOrderResponse {
   Shipment shipment = 1;
 }
 
+// Shipment mirrors the shipping service's JSON shipment shape 1:1 so the gRPC
+// and HTTP paths produce identical aggregated responses. Timestamps are the
+// service's preformatted RFC3339 strings (empty when unset) rather than
+// google.protobuf.Timestamp, to avoid parse/format round-tripping that could
+// change the wire value.
 message Shipment {
   string id = 1;
   string order_id = 2;
   string tracking_number = 3;
   string carrier = 4;
   string status = 5;
-  google.protobuf.Timestamp estimated_delivery = 6;
-  google.protobuf.Timestamp created_at = 7;
-  google.protobuf.Timestamp updated_at = 8;
+  string estimated_delivery = 6;
+  string created_at = 7;
+  string updated_at = 8;
 }
