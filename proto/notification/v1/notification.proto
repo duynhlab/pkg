@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package notification.v1;
+
+option go_package = "github.com/duynhne/pkg/proto/notification/v1;notificationv1";
+
+// NotificationService is the internal (east-west) contract for publishing
+// notifications. It mirrors the notification service's internal send endpoints.
+// Producers (e.g. order-service on checkout) call it fire-and-forget; the
+// browser-facing list/count/get/mark-read routes stay HTTP/REST.
+service NotificationService {
+  rpc SendEmail(SendEmailRequest) returns (SendEmailResponse);
+  rpc SendSMS(SendSMSRequest) returns (SendSMSResponse);
+}
+
+message SendEmailRequest {
+  int32 user_id = 1;
+  string to = 2;
+  string subject = 3;
+  string body = 4;
+}
+
+message SendEmailResponse {
+  Notification notification = 1;
+}
+
+message SendSMSRequest {
+  int32 user_id = 1;
+  string to = 2;
+  string message = 3;
+}
+
+message SendSMSResponse {
+  Notification notification = 1;
+}
+
+// Notification mirrors the notification service's JSON shape 1:1.
+message Notification {
+  string id = 1;
+  string type = 2;
+  string title = 3;
+  string message = 4;
+  string status = 5;
+  bool read = 6;
+  string created_at = 7;
+}
