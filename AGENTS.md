@@ -1,125 +1,97 @@
-# pkg - Shared Go Library
+# AGENTS.md
 
-> AI Agent context for understanding this repository
+Agent guide for `pkg`, the shared Go library for the duynhlab platform.
 
-## 📋 Overview
+## Contribution workflow
 
-This repository contains shared Go packages used across all microservices in the monitoring platform. It provides common utilities and abstractions to ensure consistency and reduce code duplication.
+Commit messages:
 
-## 🏗️ Architecture
+- **No attribution trailers.** Never add `Co-authored-by`, `Generated-by`,
+  `Signed-off-by`, `Assisted-by`, or any AI/tool attribution.
+- Subject: ≤ 50 chars, capitalised, imperative mood, no trailing period
+  (`Add deadline interceptor`, not `Added` / `Adds` / `.`).
+- Body (only if non-trivial): explain *what* and *why*, wrap at 72 chars,
+  one blank line after the subject.
+- No issue references (`Fixes #123`) and no `@`-mentions. Put those in the PR.
 
-```
-pkg/
-├── logger/
-│   ├── clog/          # slog-based logger with clog wrapper
-│   │   └── logger.go  # TracingHandler, Setup(), context helpers
-│   └── zerolog/       # zerolog-based logger
-│       └── logger.go  # Setup(), context helpers
-├── go.mod
-└── go.sum
-```
+Branch and PR:
 
-## 📦 Packages
+- **Never push to `main`.** Branch first: `<type>/<desc>` where `<type>` ∈
+  `feat` `fix` `chore` `docs` `refactor` `ci` (e.g. `feat/grpc-mtls`).
+- Open a PR against `main`; **squash-merge**.
+- CI (`.github/workflows/check.yml`) must be green: `go-check`, `buf`, `sonar`.
 
-### `logger/clog`
+## Code quality
 
-Structured logging using Go's standard `log/slog` with [chainguard-dev/clog](https://github.com/chainguard-dev/clog) wrapper. Features:
+- Idiomatic Go: small interfaces, accept `context.Context` first, return errors
+  (don't panic in library code).
+- Wrap errors with context (`fmt.Errorf("...: %w", err)`); never swallow them.
+- **Fail closed** in security-critical paths (see `authmw`).
+- Never log secrets, tokens, or bearer headers.
+- Table-driven tests for every exported function; keep `go test ./...` green.
+- Doc comment on every exported symbol; match existing package style.
 
-- **TracingHandler**: Middleware that injects `trace_id` and `span_id` from OpenTelemetry context
-- **Setup(level)**: Initialize global logger with JSON output and tracing support
-- **Context helpers**: `WithLogger()`, `FromContext()`, `InfoContext()`, `ErrorContext()`, etc.
+## Project overview
 
-```go
-import "github.com/duynhne/pkg/logger/clog"
+`pkg` is the **shared Go library** for the duynhlab microservices platform —
+common gRPC, auth, observability, logging, and protobuf code so services don't
+copy-paste it.
 
-func main() {
-    clog.Setup("info")
-    clog.InfoContext(ctx, "server started", "port", 8080)
-}
-```
+- Module: `github.com/duynhlab/pkg`
+- Consumed by `auth`, `user`, `product`, `cart`, `order`, `review`,
+  `notification`, `shipping` services.
 
-### `logger/zerolog`
+## Repository layout
 
-Alternative logger using [rs/zerolog](https://github.com/rs/zerolog). Features:
+| Path | What it provides |
+|------|------------------|
+| **`grpcx/`** | Shared gRPC server/client helpers for east-west calls. `NewServer` (otelgrpc stats handler + gRPC health service + server reflection); `Dial` (otelgrpc + client-side `round_robin` over `dns:///` headless Services + default per-RPC deadline `DefaultCallTimeout` = 5s). `WithAuthToken` / `TokenFromContext` forward the `authorization` metadata key. Transport is currently plaintext (mTLS is a later phase). |
+| **`authmw/`** | Single fail-closed gin JWT middleware. Validates the bearer token by calling auth `GetMe` over gRPC, forwarding the token as gRPC metadata. Missing header / `Unauthenticated` → 401; auth unreachable → 503 (still denies). Sets `user_id` / `username` / `email` on the gin context. |
+| **`obsx/`** | `SetupMetrics` installs a global OTel `MeterProvider` backed by a Prometheus exporter on the **default** registry, so the `grpcx` otelgrpc handlers' gRPC RED metrics surface on the service's existing `/metrics` endpoint (idempotent — safe to call once). `TraceIDFromContext` returns the active span's trace ID for log↔trace correlation. |
+| **`logger/zerolog/`** | `rs/zerolog` logger: `Setup(level)`, context helpers with trace-ID injection. |
+| **`logger/clog/`** | `log/slog` + `chainguard-dev/clog` logger: `TracingHandler`, `Setup(level)`, `*Context` helpers. |
+| **`proto/<svc>/v1/`** | Versioned `.proto` contracts + **committed** generated stubs (`*.pb.go`, `*_grpc.pb.go`) for `auth`, `notification`, `review`, `shipping`. |
 
-- **Setup(level)**: Initialize global zerolog with Unix timestamp format
-- **WithContext()**: Attach logger to context with automatic trace injection
-- **FromContext()**: Retrieve logger from context
-
-```go
-import "github.com/duynhne/pkg/logger/zerolog"
-
-func main() {
-    zerolog.Setup("debug")
-    log := zerolog.FromContext(ctx)
-    log.Info().Msg("ready")
-}
-```
-
-## 🔧 Dependencies
-
-| Package | Version | Purpose |
-|---------|---------|---------|
-| `github.com/chainguard-dev/clog` | v1.8.0 | slog wrapper with context |
-| `github.com/rs/zerolog` | v1.34.0 | High-performance structured logging |
-| `go.opentelemetry.io/otel/trace` | v1.39.0 | Trace context extraction |
-
-## 🛠️ Development
-
-### Build & Test
+## Build, test, lint
 
 ```bash
-# Download dependencies
-go mod download
+# Build, vet, test (Go 1.25; auto-fetch the toolchain)
+GOTOOLCHAIN=auto go build ./... && go vet ./... && go test ./...
 
-# Run tests
-go test -v ./...
+# Race + coverage (matches CI)
+go test -race -coverprofile=coverage.out ./...
 
-# Run tests with race detection
-go test -race ./...
-
-# Run linter
+# Lint
 golangci-lint run
+
+# Protobuf: lint, regenerate stubs, breaking-change check
+buf lint
+buf generate
+buf breaking --against 'https://github.com/duynhlab/pkg.git#branch=main'
 ```
 
-### Local Development
+Generated `*.pb.go` stubs are **committed** — regenerate with `buf generate`
+after editing a `.proto`, then commit the result.
 
-When developing services that depend on this package locally:
+## Conventions
 
-```go
-// In service's go.mod, add replace directive for local development:
-replace github.com/duynhne/pkg => ../pkg
-```
+- **Versioned releases.** Consumers pin a tag:
+  `go get github.com/duynhlab/pkg@vX.Y.Z`. Current: **v0.3.0**.
+- Protobuf package is `<svc>.v1`; contracts live in `proto/<svc>/v1/*.proto`.
+- `buf` drives codegen (`buf.gen.yaml`: `protoc-gen-go` + `protoc-gen-go-grpc`,
+  `paths=source_relative`) and lint/breaking checks (`buf.yaml`).
+- Local development against a service: add a `replace` directive in the
+  service's `go.mod` (`replace github.com/duynhlab/pkg => ../pkg`).
 
-## 🚀 CI/CD
+## Gotchas
 
-This repo uses reusable GitHub Actions from [shared-workflows](https://github.com/duyhenryer/shared-workflows):
-
-- **go-check.yml**: Tests and linting on PRs
-- **sonarqube.yml**: SonarCloud analysis
-
-## 📐 Code Style
-
-- Follow standard Go conventions
-- Use context-based logging for traceability
-- All public functions should have doc comments
-- Log levels: debug, info, warn, error
-
-## 🔗 Used By
-
-- `auth-service`
-- `user-service`
-- `product-service`
-- `cart-service`
-- `order-service`
-- `review-service`
-- `notification-service`
-- `shipping-service`
-
-## 📝 Versioning
-
-Uses semantic versioning. Services should depend on specific tags:
-
-```go
-require github.com/duynhne/pkg v1.0.0
-```
+- **Don't hand-edit generated stubs.** `*.pb.go` / `*_grpc.pb.go` are committed
+  but regenerated from `.proto` via `buf generate`; edits will be overwritten.
+- **A new version needs a tag.** Pushing to `main` does not update consumers —
+  cut a `vX.Y.Z` tag so services can `go get` the change.
+- **`buf breaking` runs in CI** against `main`; a backward-incompatible proto
+  change fails the PR. Bump the package version / add new fields instead of
+  changing existing ones.
+- `obsx.SetupMetrics` registers on the **default** Prometheus registry and must
+  not be called twice with two exporters (it is idempotent, but a second
+  exporter on the default registry would panic).
