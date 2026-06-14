@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read # sonarqube.yml's job requests this; a reusable workflow can't exceed the caller's grant
 
 jobs:
   go-check:
