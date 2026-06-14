@@ -28,6 +28,9 @@ jobs:
           format: true
           breaking: true
           breaking_against: 'https://github.com/duynhlab/pkg.git#branch=main'
+          # Don't post a PR comment: it needs pull-requests:write (and fails on
+          # fork PRs). The lint/format/breaking checks still gate the PR.
+          pr_comment: false
 
   sonar:
     needs: go-check
