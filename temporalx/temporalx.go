@@ -3,7 +3,7 @@
 // Temporal the same way. It keeps OpenTelemetry tracing consistent with the rest
 // of the platform: workflow and activity spans join the same trace as the
 // gRPC/HTTP request that started the workflow, correlated through the existing
-// Tempo backend (see homelab/docs/architecture/temporal-order-fulfillment.md).
+// Tempo backend (see homelab/docs/api/temporal-order-fulfillment.md).
 package temporalx
 
 import (
