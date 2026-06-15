@@ -7,7 +7,8 @@ Shared Go library for monitoring platform microservices.
 - **Logging**: Zerolog implementation with structured JSON output
 - **Tracing**: OpenTelemetry span helpers
 - **gRPC (`grpcx`)**: shared server/client helpers for internal east-west calls — OpenTelemetry instrumentation, the gRPC health protocol, server reflection, and client-side round-robin load balancing.
-- **Protobuf contracts (`proto/`)**: versioned `.proto` definitions and generated Go stubs (e.g. `proto/shipping/v1`). Phase 0 of the gRPC migration — see `homelab/docs/api/grpc-internal-comms.md`.
+- **Temporal (`temporalx`)**: bootstrap helpers for the Temporal client + workers with the OpenTelemetry tracing interceptor wired in (used by the order-fulfillment saga).
+- **Protobuf contracts (`proto/`)**: versioned `.proto` definitions and generated Go stubs (e.g. `proto/shipping/v1`, `proto/product/v1`). Phase 0 of the gRPC migration — see `homelab/docs/api/grpc-internal-comms.md`.
 - **Common utilities**: Shared code across services
 
 ## Installation

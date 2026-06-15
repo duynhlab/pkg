@@ -20,6 +20,8 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	ShippingService_GetShipmentByOrder_FullMethodName = "/shipping.v1.ShippingService/GetShipmentByOrder"
+	ShippingService_CreateShipment_FullMethodName     = "/shipping.v1.ShippingService/CreateShipment"
+	ShippingService_CancelShipment_FullMethodName     = "/shipping.v1.ShippingService/CancelShipment"
 )
 
 // ShippingServiceClient is the client API for ShippingService service.
@@ -38,6 +40,15 @@ type ShippingServiceClient interface {
 	// shipment is unset when no shipment exists for the order yet (the HTTP
 	// route returns a null shipment in that case).
 	GetShipmentByOrder(ctx context.Context, in *GetShipmentByOrderRequest, opts ...grpc.CallOption) (*GetShipmentByOrderResponse, error)
+	// CreateShipment creates a shipment for an order (step 2 of the
+	// order-fulfillment saga). Idempotent by order_id: a repeat call returns the
+	// existing shipment rather than creating a duplicate, so a Temporal activity
+	// retry is safe.
+	CreateShipment(ctx context.Context, in *CreateShipmentRequest, opts ...grpc.CallOption) (*CreateShipmentResponse, error)
+	// CancelShipment cancels the shipment for an order (the saga compensation for
+	// CreateShipment). Idempotent: cancelling an already-cancelled or
+	// non-existent shipment succeeds, so compensation is safe to retry.
+	CancelShipment(ctx context.Context, in *CancelShipmentRequest, opts ...grpc.CallOption) (*CancelShipmentResponse, error)
 }
 
 type shippingServiceClient struct {
@@ -52,6 +63,26 @@ func (c *shippingServiceClient) GetShipmentByOrder(ctx context.Context, in *GetS
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetShipmentByOrderResponse)
 	err := c.cc.Invoke(ctx, ShippingService_GetShipmentByOrder_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *shippingServiceClient) CreateShipment(ctx context.Context, in *CreateShipmentRequest, opts ...grpc.CallOption) (*CreateShipmentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateShipmentResponse)
+	err := c.cc.Invoke(ctx, ShippingService_CreateShipment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *shippingServiceClient) CancelShipment(ctx context.Context, in *CancelShipmentRequest, opts ...grpc.CallOption) (*CancelShipmentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CancelShipmentResponse)
+	err := c.cc.Invoke(ctx, ShippingService_CancelShipment_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -74,6 +105,15 @@ type ShippingServiceServer interface {
 	// shipment is unset when no shipment exists for the order yet (the HTTP
 	// route returns a null shipment in that case).
 	GetShipmentByOrder(context.Context, *GetShipmentByOrderRequest) (*GetShipmentByOrderResponse, error)
+	// CreateShipment creates a shipment for an order (step 2 of the
+	// order-fulfillment saga). Idempotent by order_id: a repeat call returns the
+	// existing shipment rather than creating a duplicate, so a Temporal activity
+	// retry is safe.
+	CreateShipment(context.Context, *CreateShipmentRequest) (*CreateShipmentResponse, error)
+	// CancelShipment cancels the shipment for an order (the saga compensation for
+	// CreateShipment). Idempotent: cancelling an already-cancelled or
+	// non-existent shipment succeeds, so compensation is safe to retry.
+	CancelShipment(context.Context, *CancelShipmentRequest) (*CancelShipmentResponse, error)
 	mustEmbedUnimplementedShippingServiceServer()
 }
 
@@ -86,6 +126,12 @@ type UnimplementedShippingServiceServer struct{}
 
 func (UnimplementedShippingServiceServer) GetShipmentByOrder(context.Context, *GetShipmentByOrderRequest) (*GetShipmentByOrderResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetShipmentByOrder not implemented")
+}
+func (UnimplementedShippingServiceServer) CreateShipment(context.Context, *CreateShipmentRequest) (*CreateShipmentResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateShipment not implemented")
+}
+func (UnimplementedShippingServiceServer) CancelShipment(context.Context, *CancelShipmentRequest) (*CancelShipmentResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CancelShipment not implemented")
 }
 func (UnimplementedShippingServiceServer) mustEmbedUnimplementedShippingServiceServer() {}
 func (UnimplementedShippingServiceServer) testEmbeddedByValue()                         {}
@@ -126,6 +172,42 @@ func _ShippingService_GetShipmentByOrder_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ShippingService_CreateShipment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateShipmentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ShippingServiceServer).CreateShipment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ShippingService_CreateShipment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ShippingServiceServer).CreateShipment(ctx, req.(*CreateShipmentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ShippingService_CancelShipment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CancelShipmentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ShippingServiceServer).CancelShipment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ShippingService_CancelShipment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ShippingServiceServer).CancelShipment(ctx, req.(*CancelShipmentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ShippingService_ServiceDesc is the grpc.ServiceDesc for ShippingService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -136,6 +218,14 @@ var ShippingService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetShipmentByOrder",
 			Handler:    _ShippingService_GetShipmentByOrder_Handler,
+		},
+		{
+			MethodName: "CreateShipment",
+			Handler:    _ShippingService_CreateShipment_Handler,
+		},
+		{
+			MethodName: "CancelShipment",
+			Handler:    _ShippingService_CancelShipment_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

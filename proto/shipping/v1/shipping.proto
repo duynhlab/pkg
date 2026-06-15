@@ -14,6 +14,17 @@ service ShippingService {
   // shipment is unset when no shipment exists for the order yet (the HTTP
   // route returns a null shipment in that case).
   rpc GetShipmentByOrder(GetShipmentByOrderRequest) returns (GetShipmentByOrderResponse);
+
+  // CreateShipment creates a shipment for an order (step 2 of the
+  // order-fulfillment saga). Idempotent by order_id: a repeat call returns the
+  // existing shipment rather than creating a duplicate, so a Temporal activity
+  // retry is safe.
+  rpc CreateShipment(CreateShipmentRequest) returns (CreateShipmentResponse);
+
+  // CancelShipment cancels the shipment for an order (the saga compensation for
+  // CreateShipment). Idempotent: cancelling an already-cancelled or
+  // non-existent shipment succeeds, so compensation is safe to retry.
+  rpc CancelShipment(CancelShipmentRequest) returns (CancelShipmentResponse);
 }
 
 message GetShipmentByOrderRequest {
@@ -24,6 +35,23 @@ message GetShipmentByOrderResponse {
   // Unset when the order has no shipment yet.
   Shipment shipment = 1;
 }
+
+message CreateShipmentRequest {
+  string order_id = 1;
+  // Free-form destination address carried from the order. The shipping service
+  // generates the tracking number / carrier itself.
+  string address = 2;
+}
+
+message CreateShipmentResponse {
+  Shipment shipment = 1;
+}
+
+message CancelShipmentRequest {
+  string order_id = 1;
+}
+
+message CancelShipmentResponse {}
 
 // Shipment mirrors the shipping service's JSON shipment shape 1:1 so the gRPC
 // and HTTP paths produce identical aggregated responses. Timestamps are the

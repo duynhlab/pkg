@@ -48,9 +48,10 @@ copy-paste it.
 | **`grpcx/`** | Shared gRPC server/client helpers for east-west calls. `NewServer` (otelgrpc stats handler + gRPC health service + server reflection); `Dial` (otelgrpc + client-side `round_robin` over `dns:///` headless Services + default per-RPC deadline `DefaultCallTimeout` = 5s). `WithAuthToken` / `TokenFromContext` forward the `authorization` metadata key. Transport is currently plaintext (mTLS is a later phase). |
 | **`authmw/`** | Single fail-closed gin JWT middleware. Validates the bearer token by calling auth `GetMe` over gRPC, forwarding the token as gRPC metadata. Missing header / `Unauthenticated` → 401; auth unreachable → 503 (still denies). Sets `user_id` / `username` / `email` on the gin context. |
 | **`obsx/`** | `SetupMetrics` installs a global OTel `MeterProvider` backed by a Prometheus exporter on the **default** registry, so the `grpcx` otelgrpc handlers' gRPC RED metrics surface on the service's existing `/metrics` endpoint (idempotent — safe to call once). `TraceIDFromContext` returns the active span's trace ID for log↔trace correlation. |
+| **`temporalx/`** | Temporal bootstrap helpers mirroring `grpcx`/`obsx`. `Dial(Config{HostPort, Namespace})` connects to the frontend with the OpenTelemetry tracing interceptor registered, so workflow/activity spans join the trace of the request that started them; `NewWorker(client, taskQueue)` builds a worker that inherits that interceptor. Plaintext transport (mTLS is a later phase). Used by the order-fulfillment saga. |
 | **`logger/zerolog/`** | `rs/zerolog` logger: `Setup(level)`, context helpers with trace-ID injection. |
 | **`logger/clog/`** | `log/slog` + `chainguard-dev/clog` logger: `TracingHandler`, `Setup(level)`, `*Context` helpers. |
-| **`proto/<svc>/v1/`** | Versioned `.proto` contracts + **committed** generated stubs (`*.pb.go`, `*_grpc.pb.go`) for `auth`, `notification`, `review`, `shipping`. |
+| **`proto/<svc>/v1/`** | Versioned `.proto` contracts + **committed** generated stubs (`*.pb.go`, `*_grpc.pb.go`) for `auth`, `notification`, `product`, `review`, `shipping`. `product` (`ReserveStock`/`ReleaseStock`) and `shipping` (`CreateShipment`/`CancelShipment`) are the order-fulfillment saga contracts. |
 
 ## Build, test, lint
 

@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package product.v1;
+
+option go_package = "github.com/duynhlab/pkg/proto/product/v1;productv1";
+
+// ProductService is the internal (east-west) contract for the product service.
+// It exposes inventory operations used by the order-fulfillment saga
+// (see homelab/docs/architecture/temporal-order-fulfillment.md). These close
+// the long-standing inventory TODO in the synchronous checkout path.
+service ProductService {
+  // ReserveStock atomically decrements stock for every line item (step 1 of the
+  // saga). It is all-or-nothing: if any item has insufficient stock, nothing is
+  // reserved and the call fails with FAILED_PRECONDITION. Idempotent by
+  // reservation_id (the order ID) so a Temporal activity retry does not
+  // double-decrement.
+  rpc ReserveStock(ReserveStockRequest) returns (ReserveStockResponse);
+
+  // ReleaseStock returns previously reserved stock (the saga compensation for
+  // ReserveStock). Idempotent by reservation_id: releasing an unknown or
+  // already-released reservation succeeds, so compensation is safe to retry.
+  rpc ReleaseStock(ReleaseStockRequest) returns (ReleaseStockResponse);
+}
+
+// StockItem is a single product/quantity pair within a reservation.
+message StockItem {
+  string product_id = 1;
+  int32 quantity = 2;
+}
+
+message ReserveStockRequest {
+  // Idempotency key for the reservation — the order ID. Repeated ReserveStock
+  // calls with the same reservation_id reserve at most once.
+  string reservation_id = 1;
+  repeated StockItem items = 2;
+}
+
+message ReserveStockResponse {}
+
+message ReleaseStockRequest {
+  string reservation_id = 1;
+  repeated StockItem items = 2;
+}
+
+message ReleaseStockResponse {}
