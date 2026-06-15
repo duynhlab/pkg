@@ -29,7 +29,7 @@ const (
 //
 // ProductService is the internal (east-west) contract for the product service.
 // It exposes inventory operations used by the order-fulfillment saga
-// (see homelab/docs/architecture/temporal-order-fulfillment.md). These close
+// (see homelab/docs/api/temporal-order-fulfillment.md). These close
 // the long-standing inventory TODO in the synchronous checkout path.
 type ProductServiceClient interface {
 	// ReserveStock atomically decrements stock for every line item (step 1 of the
@@ -78,7 +78,7 @@ func (c *productServiceClient) ReleaseStock(ctx context.Context, in *ReleaseStoc
 //
 // ProductService is the internal (east-west) contract for the product service.
 // It exposes inventory operations used by the order-fulfillment saga
-// (see homelab/docs/architecture/temporal-order-fulfillment.md). These close
+// (see homelab/docs/api/temporal-order-fulfillment.md). These close
 // the long-standing inventory TODO in the synchronous checkout path.
 type ProductServiceServer interface {
 	// ReserveStock atomically decrements stock for every line item (step 1 of the
