@@ -1,0 +1,21 @@
+name: release
+
+# Publish a GitHub Release whenever a SemVer tag is pushed. Consumers pin the
+# module by tag (github.com/duynhlab/pkg@vX.Y.Z); this gives each tag a release
+# page with auto-generated notes. No build/artifacts — pkg is a Go library.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
+        with:
+          generate_release_notes: true
