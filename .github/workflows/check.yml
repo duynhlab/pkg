@@ -10,11 +10,10 @@ permissions:
 
 jobs:
   go-check:
-    uses: duynhlab/gha-workflows/.github/workflows/go-check.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/go-check.yml@812bbdb2b2138dec0a48b50fcdb3ef437aca870b # main
     with:
       command-test: 'go test -race -coverprofile=coverage.out ./...'
       lint: true
-    secrets: inherit
 
   # Protobuf contract checks for the gRPC modules under proto/.
   # Lints the .proto style and fails the PR on a backward-incompatible change.
@@ -22,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: bufbuild/buf-action@v1
+      - uses: bufbuild/buf-action@fd21066df7214747548607aaa45548ba2b9bc1ff # v1
         with:
           lint: true
           format: true
@@ -34,7 +33,7 @@ jobs:
 
   sonar:
     needs: go-check
-    uses: duynhlab/gha-workflows/.github/workflows/sonarqube.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/sonarqube.yml@812bbdb2b2138dec0a48b50fcdb3ef437aca870b # main
     with:
       project-key: 'duynhlab_pkg'
       organization: 'duynhlab'

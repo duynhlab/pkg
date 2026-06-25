@@ -22,6 +22,23 @@ func TestServiceNameFromEnv_FallsBackWhenUnset(t *testing.T) {
 	}
 }
 
+func TestResolveServiceName(t *testing.T) {
+	cases := []struct {
+		name, otel, host, want string
+	}{
+		{"otel wins", "auth-service", "auth-7c9-x", "auth-service"},
+		{"hostname fallback", "", "auth-7c9-x", "auth-7c9-x"},
+		{"sentinel when both empty", "", "", unknownService},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := resolveServiceName(c.otel, c.host); got != c.want {
+				t.Fatalf("resolveServiceName(%q,%q) = %q, want %q", c.otel, c.host, got, c.want)
+			}
+		})
+	}
+}
+
 func TestEndpointFromEnv(t *testing.T) {
 	t.Setenv("PYROSCOPE_ENDPOINT", "http://pyroscope.example:4040")
 	if got := endpointFromEnv(); got != "http://pyroscope.example:4040" {

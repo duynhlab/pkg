@@ -104,11 +104,18 @@ func TracerProviderWithProfiles(tp trace.TracerProvider) trace.TracerProvider {
 // serviceNameFromEnv resolves the profiling application name from
 // OTEL_SERVICE_NAME, falling back to the hostname and then a sentinel.
 func serviceNameFromEnv() string {
-	if name := os.Getenv("OTEL_SERVICE_NAME"); name != "" {
-		return name
+	host, _ := os.Hostname()
+	return resolveServiceName(os.Getenv("OTEL_SERVICE_NAME"), host)
+}
+
+// resolveServiceName picks OTEL_SERVICE_NAME, then the hostname, then a
+// sentinel. Split out from env access so every branch is unit-testable.
+func resolveServiceName(otelName, hostname string) string {
+	if otelName != "" {
+		return otelName
 	}
-	if host, err := os.Hostname(); err == nil && host != "" {
-		return host
+	if hostname != "" {
+		return hostname
 	}
 	return unknownService
 }
