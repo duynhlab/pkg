@@ -2,6 +2,7 @@ package obsx
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
@@ -46,37 +47,77 @@ func TestEndpointFromEnv(t *testing.T) {
 	}
 }
 
-func TestAddResourceTag(t *testing.T) {
-	t.Setenv("OTEL_RESOURCE_ATTRIBUTES", "service.namespace=identity, deployment.environment=prod ,service.version=v1.2.3")
+func TestProfilingTags(t *testing.T) {
+	// Spaces are trimmed; the duplicate service.namespace must be last-wins.
+	t.Setenv("OTEL_RESOURCE_ATTRIBUTES",
+		"service.namespace=identity, deployment.environment=prod ,service.version=v1.2.3,service.namespace=catalog")
 
-	tags := map[string]string{}
-	addResourceTag(tags, "service_namespace", "service.namespace")
-	addResourceTag(tags, "deployment_environment", "deployment.environment")
-	addResourceTag(tags, "service_version", "service.version")
-	addResourceTag(tags, "region", "cloud.region") // absent → not added
-
+	got := profilingTags()
 	want := map[string]string{
-		"service_namespace":      "identity",
+		"service_namespace":      "catalog",
 		"deployment_environment": "prod",
 		"service_version":        "v1.2.3",
 	}
-	if len(tags) != len(want) {
-		t.Fatalf("tags = %v, want %v", tags, want)
+	if len(got) != len(want) {
+		t.Fatalf("profilingTags() = %v, want %v", got, want)
 	}
 	for k, v := range want {
-		if tags[k] != v {
-			t.Errorf("tags[%q] = %q, want %q", k, tags[k], v)
+		if got[k] != v {
+			t.Errorf("tags[%q] = %q, want %q", k, got[k], v)
 		}
 	}
 }
 
-func TestAddResourceTag_EmptyEnv(t *testing.T) {
+func TestProfilingTags_EmptyAndMalformed(t *testing.T) {
 	t.Setenv("OTEL_RESOURCE_ATTRIBUTES", "")
-	tags := map[string]string{}
-	addResourceTag(tags, "service_namespace", "service.namespace")
-	if len(tags) != 0 {
-		t.Fatalf("expected no tags from empty env, got %v", tags)
+	if got := profilingTags(); len(got) != 0 {
+		t.Fatalf("expected no tags from empty env, got %v", got)
 	}
+	// no '=', empty value, and unmapped keys are all skipped.
+	t.Setenv("OTEL_RESOURCE_ATTRIBUTES", "garbage,service.version=,cloud.region=us-east-1")
+	if got := profilingTags(); len(got) != 0 {
+		t.Fatalf("expected no mapped tags, got %v", got)
+	}
+}
+
+// TestStartProfiler_EmptyEndpoint covers the misconfiguration guard: profiling
+// enabled but PYROSCOPE_ENDPOINT unset must return an error (not a silent no-op)
+// and must not start a profiler. Calls startProfiler directly to bypass the
+// sync.Once in SetupProfiling.
+func TestStartProfiler_EmptyEndpoint(t *testing.T) {
+	t.Setenv("PYROSCOPE_ENDPOINT", "")
+	p, err := startProfiler()
+	if err == nil {
+		t.Fatal("startProfiler() with empty endpoint = nil error, want error")
+	}
+	if p != nil {
+		t.Fatalf("startProfiler() returned a non-nil profiler on error: %v", p)
+	}
+}
+
+// TestStartProfiler_Success covers the happy path (valid endpoint → profiler).
+func TestStartProfiler_Success(t *testing.T) {
+	t.Setenv("OTEL_SERVICE_NAME", "auth-service")
+	t.Setenv("PYROSCOPE_ENDPOINT", "http://127.0.0.1:4040")
+	p, err := startProfiler()
+	if err != nil {
+		t.Fatalf("startProfiler() = %v", err)
+	}
+	if p == nil {
+		t.Fatal("startProfiler() returned a nil profiler")
+	}
+	if err := p.Stop(); err != nil {
+		t.Errorf("profiler.Stop() = %v", err)
+	}
+}
+
+func TestPyroErrorLogger(t *testing.T) {
+	// The adapter must satisfy pyroscope.Logger; Infof/Debugf are no-ops and
+	// Errorf forwards. Exercising all three keeps the contract covered.
+	var l pyroErrorLogger
+	l.Infof("info %d", 1)
+	l.Debugf("debug %s", "x")
+	l.Errorf("err %v", errors.New("boom"))
 }
 
 func TestTracerProviderWithProfiles(t *testing.T) {
