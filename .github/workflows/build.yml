@@ -10,15 +10,14 @@ permissions:
 
 jobs:
   go-check:
-    uses: duynhlab/gha-workflows/.github/workflows/go-check.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/go-check.yml@812bbdb2b2138dec0a48b50fcdb3ef437aca870b # main
     with:
       command-test: 'go test -race -coverprofile=coverage.out ./...'
       lint: true
-    secrets: inherit
 
   sonar:
     needs: go-check
-    uses: duynhlab/gha-workflows/.github/workflows/sonarqube.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/sonarqube.yml@812bbdb2b2138dec0a48b50fcdb3ef437aca870b # main
     with:
       project-key: 'duynhlab_pkg'
       organization: 'duynhlab'
