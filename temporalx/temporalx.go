@@ -46,33 +46,21 @@ type Config struct {
 // Transport is plaintext for in-cluster east-west traffic; mTLS is a later phase
 // (mirrors grpcx).
 func Dial(cfg Config) (client.Client, error) {
-	opts, err := clientOptions(cfg)
-	if err != nil {
-		return nil, err
-	}
-
-	c, err := client.Dial(opts)
-	if err != nil {
-		return nil, fmt.Errorf("temporalx: dial %q (namespace %q): %w", cfg.HostPort, cfg.Namespace, err)
-	}
-	return c, nil
-}
-
-// clientOptions builds the client.Options used by Dial — the tracing interceptor
-// plus the OpenTelemetry metrics handler. Split out so the wiring is unit-testable
-// without a live Temporal frontend.
-func clientOptions(cfg Config) (client.Options, error) {
 	tracing, err := opentelemetry.NewTracingInterceptor(opentelemetry.TracerOptions{})
 	if err != nil {
-		return client.Options{}, fmt.Errorf("temporalx: build tracing interceptor: %w", err)
+		return nil, fmt.Errorf("temporalx: build tracing interceptor: %w", err)
 	}
 
-	return client.Options{
+	c, err := client.Dial(client.Options{
 		HostPort:       cfg.HostPort,
 		Namespace:      cfg.Namespace,
 		Interceptors:   []interceptor.ClientInterceptor{tracing},
 		MetricsHandler: opentelemetry.NewMetricsHandler(opentelemetry.MetricsHandlerOptions{}),
-	}, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("temporalx: dial %q (namespace %q): %w", cfg.HostPort, cfg.Namespace, err)
+	}
+	return c, nil
 }
 
 // NewWorker creates a Temporal worker that polls taskQueue on the given client.

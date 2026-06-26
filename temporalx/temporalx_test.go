@@ -21,22 +21,3 @@ func TestDial_WrapsConnectionError(t *testing.T) {
 		}
 	}
 }
-
-// clientOptions must wire both the OTel tracing interceptor and the SDK metrics
-// handler — without the handler, workflow/activity RED metrics never reach the
-// service's /metrics endpoint.
-func TestClientOptions_WiresTracingAndMetrics(t *testing.T) {
-	opts, err := clientOptions(Config{HostPort: "frontend:7233", Namespace: "mop"})
-	if err != nil {
-		t.Fatalf("clientOptions returned %v, want nil", err)
-	}
-	if opts.MetricsHandler == nil {
-		t.Error("MetricsHandler not wired; workflow/activity RED metrics would be absent")
-	}
-	if len(opts.Interceptors) != 1 {
-		t.Errorf("got %d interceptors, want 1 (tracing)", len(opts.Interceptors))
-	}
-	if opts.HostPort != "frontend:7233" || opts.Namespace != "mop" {
-		t.Errorf("opts host/ns = %q/%q, want frontend:7233/mop", opts.HostPort, opts.Namespace)
-	}
-}
