@@ -1,9 +1,11 @@
 // Package temporalx provides thin, opinionated bootstrap helpers for connecting
 // to Temporal and running workers, mirroring grpcx/obsx so every service wires
-// Temporal the same way. It keeps OpenTelemetry tracing consistent with the rest
-// of the platform: workflow and activity spans join the same trace as the
-// gRPC/HTTP request that started the workflow, correlated through the existing
-// Tempo backend (see homelab/docs/api/temporal-order-fulfillment.md).
+// Temporal the same way. It keeps OpenTelemetry tracing and metrics consistent
+// with the rest of the platform: workflow and activity spans join the same trace
+// as the gRPC/HTTP request that started the workflow (correlated through the
+// existing Tempo backend), and the SDK's workflow/activity RED metrics flow to
+// the same OpenTelemetry MeterProvider as everything else, surfacing on the
+// service's /metrics endpoint (see homelab/docs/api/temporal-order-fulfillment.md).
 package temporalx
 
 import (
@@ -24,7 +26,8 @@ type Config struct {
 	Namespace string
 }
 
-// Dial connects to the Temporal frontend with OpenTelemetry tracing wired in.
+// Dial connects to the Temporal frontend with OpenTelemetry tracing and metrics
+// wired in.
 //
 // The tracing interceptor is registered on the client; workers created from this
 // client via NewWorker inherit the worker-side of the same interceptor, so a
@@ -33,23 +36,43 @@ type Config struct {
 // provider (which services already configure at startup), so no tracer needs to
 // be threaded through.
 //
+// A Temporal SDK MetricsHandler is also registered, emitting the SDK's
+// workflow/activity RED metrics to the global OpenTelemetry MeterProvider that
+// obsx.SetupMetrics installs (Prometheus exporter on the default registry). They
+// surface on the service's existing /metrics endpoint — no extra port. If
+// obsx.SetupMetrics was not called, the global provider is a no-op, so this stays
+// safe to register unconditionally.
+//
 // Transport is plaintext for in-cluster east-west traffic; mTLS is a later phase
 // (mirrors grpcx).
 func Dial(cfg Config) (client.Client, error) {
-	tracing, err := opentelemetry.NewTracingInterceptor(opentelemetry.TracerOptions{})
+	opts, err := clientOptions(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("temporalx: build tracing interceptor: %w", err)
+		return nil, err
 	}
 
-	c, err := client.Dial(client.Options{
-		HostPort:     cfg.HostPort,
-		Namespace:    cfg.Namespace,
-		Interceptors: []interceptor.ClientInterceptor{tracing},
-	})
+	c, err := client.Dial(opts)
 	if err != nil {
 		return nil, fmt.Errorf("temporalx: dial %q (namespace %q): %w", cfg.HostPort, cfg.Namespace, err)
 	}
 	return c, nil
+}
+
+// clientOptions builds the client.Options used by Dial — the tracing interceptor
+// plus the OpenTelemetry metrics handler. Split out so the wiring is unit-testable
+// without a live Temporal frontend.
+func clientOptions(cfg Config) (client.Options, error) {
+	tracing, err := opentelemetry.NewTracingInterceptor(opentelemetry.TracerOptions{})
+	if err != nil {
+		return client.Options{}, fmt.Errorf("temporalx: build tracing interceptor: %w", err)
+	}
+
+	return client.Options{
+		HostPort:       cfg.HostPort,
+		Namespace:      cfg.Namespace,
+		Interceptors:   []interceptor.ClientInterceptor{tracing},
+		MetricsHandler: opentelemetry.NewMetricsHandler(opentelemetry.MetricsHandlerOptions{}),
+	}, nil
 }
 
 // NewWorker creates a Temporal worker that polls taskQueue on the given client.
