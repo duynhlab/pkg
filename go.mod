@@ -3,8 +3,10 @@ module github.com/duynhlab/pkg
 go 1.25.8
 
 require (
+	github.com/MicahParks/keyfunc/v3 v3.8.0
 	github.com/chainguard-dev/clog v1.8.0
 	github.com/gin-gonic/gin v1.12.0
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/grafana/otel-profiling-go v0.6.0
 	github.com/grafana/pyroscope-go v1.3.1
@@ -22,6 +24,7 @@ require (
 )
 
 require (
+	github.com/MicahParks/jwkset v0.11.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.15.0 // indirect
