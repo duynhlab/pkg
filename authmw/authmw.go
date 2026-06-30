@@ -32,6 +32,9 @@ const (
 	CtxEmail    = "email"
 )
 
+// msgInvalidToken is the 401 response body shared by the opaque and JWT paths.
+const msgInvalidToken = "Invalid or expired token"
+
 // Validator is the subset of authv1.AuthServiceClient the middleware needs.
 // The generated client satisfies it; tests provide a fake.
 type Validator interface {
@@ -66,7 +69,7 @@ func authenticateOpaque(c *gin.Context, client Validator, authz string) {
 	resp, err := client.GetMe(ctx, &authv1.GetMeRequest{})
 	if err != nil {
 		if status.Code(err) == codes.Unauthenticated {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": msgInvalidToken})
 			return
 		}
 		// Auth unreachable or internal error: deny, but signal it's transient
@@ -176,36 +179,45 @@ func MiddlewareJWT(verifier *Verifier, fallback Validator) gin.HandlerFunc {
 			return
 		}
 
-		// Strip a case-insensitive "Bearer " prefix for shape detection only;
-		// the original header is forwarded unchanged to the opaque fallback.
-		tok := authz
-		if len(tok) >= 7 && strings.EqualFold(tok[:7], "bearer ") {
-			tok = strings.TrimSpace(tok[7:])
-		}
-
 		// A compact JWS has exactly two dots; otherwise treat it as opaque.
-		if strings.Count(tok, ".") == 2 && verifier != nil {
-			claims, err := verifier.verify(tok)
-			if err != nil {
-				if errors.Is(err, errTransient) {
-					c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "Authentication temporarily unavailable"})
-					return
-				}
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
-				return
-			}
-			c.Set(CtxUserID, claims.sub)
-			c.Set(CtxUsername, claims.username)
-			c.Set(CtxEmail, claims.email)
-			c.Next()
+		if tok := bearerToken(authz); strings.Count(tok, ".") == 2 && verifier != nil {
+			authenticateJWT(c, verifier, tok)
 			return
 		}
 
 		// Opaque path (or JWT-shaped with no verifier): require a fallback.
 		if fallback == nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": msgInvalidToken})
 			return
 		}
 		authenticateOpaque(c, fallback, authz)
 	}
+}
+
+// bearerToken strips a case-insensitive "Bearer " prefix for JWT shape
+// detection; the caller still forwards the ORIGINAL header to the opaque path.
+func bearerToken(authz string) string {
+	if len(authz) >= 7 && strings.EqualFold(authz[:7], "bearer ") {
+		return strings.TrimSpace(authz[7:])
+	}
+	return authz
+}
+
+// authenticateJWT verifies a JWT-shaped token locally and, on success, sets the
+// Ctx* values and calls c.Next(). A transient key-fetch failure maps to 503; any
+// other (invalid-token) error maps to 401. Fail-closed on every path.
+func authenticateJWT(c *gin.Context, verifier *Verifier, tok string) {
+	claims, err := verifier.verify(tok)
+	if err != nil {
+		if errors.Is(err, errTransient) {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "Authentication temporarily unavailable"})
+			return
+		}
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": msgInvalidToken})
+		return
+	}
+	c.Set(CtxUserID, claims.sub)
+	c.Set(CtxUsername, claims.username)
+	c.Set(CtxEmail, claims.email)
+	c.Next()
 }
