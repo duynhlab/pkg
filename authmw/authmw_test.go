@@ -171,6 +171,20 @@ func TestMiddlewareJWT(t *testing.T) {
 		return hdr + "." + body + "."
 	}()
 
+	// RS256-signed token whose header omits "alg" entirely (missing alg). The
+	// signature is valid RS256 but the header lies about it — must be rejected.
+	missingAlgToken := func() string {
+		hdr := base64.RawURLEncoding.EncodeToString([]byte(`{"typ":"JWT","kid":"` + testKID + `"}`))
+		cb, _ := json.Marshal(validClaims(iss, aud, time.Now().Add(time.Hour)))
+		body := base64.RawURLEncoding.EncodeToString(cb)
+		signing := hdr + "." + body
+		sig, err := jwt.SigningMethodRS256.Sign(signing, key)
+		if err != nil {
+			t.Fatalf("sign missing-alg: %v", err)
+		}
+		return signing + "." + base64.RawURLEncoding.EncodeToString(sig)
+	}()
+
 	// HS256 token using the RSA public-key bytes as the HMAC secret
 	// (classic algorithm-confusion attack payload).
 	hsToken := func() string {
@@ -229,6 +243,24 @@ func TestMiddlewareJWT(t *testing.T) {
 		{
 			name:       "different signing key (same kid) -> 401",
 			token:      signRS256(t, otherKey, testKID, validClaims(iss, aud, time.Now().Add(time.Hour))),
+			bearer:     true,
+			verifier:   verifier,
+			fallback:   &fakeValidator{},
+			wantStatus: http.StatusUnauthorized,
+		},
+		{
+			// Unknown kid against a HEALTHY, populated JWKS is an invalid token
+			// (forged/rotated kid), NOT a JWKS outage: must be 401, never 503.
+			name:       "unknown kid (healthy JWKS) -> 401",
+			token:      signRS256(t, key, "no-such-kid", validClaims(iss, aud, time.Now().Add(time.Hour))),
+			bearer:     true,
+			verifier:   verifier,
+			fallback:   &fakeValidator{},
+			wantStatus: http.StatusUnauthorized,
+		},
+		{
+			name:       "missing alg header -> 401",
+			token:      missingAlgToken,
 			bearer:     true,
 			verifier:   verifier,
 			fallback:   &fakeValidator{},
@@ -334,7 +366,9 @@ func TestMiddlewareJWT(t *testing.T) {
 }
 
 // TestMiddlewareJWT_TransientKeyFetch verifies that a JWT-shaped token whose
-// JWKS endpoint is unreachable yields 503 (transient), not 401.
+// JWKS endpoint never delivered any keys (genuine outage: the cached set is
+// empty) yields 503 (transient), not 401 — the opposite of the unknown-kid
+// case above, where the set IS populated.
 func TestMiddlewareJWT_TransientKeyFetch(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

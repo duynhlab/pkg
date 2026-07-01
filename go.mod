@@ -3,6 +3,7 @@ module github.com/duynhlab/pkg
 go 1.25.8
 
 require (
+	github.com/MicahParks/jwkset v0.11.0
 	github.com/MicahParks/keyfunc/v3 v3.8.0
 	github.com/chainguard-dev/clog v1.8.0
 	github.com/gin-gonic/gin v1.12.0
@@ -24,7 +25,6 @@ require (
 )
 
 require (
-	github.com/MicahParks/jwkset v0.11.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.15.0 // indirect
