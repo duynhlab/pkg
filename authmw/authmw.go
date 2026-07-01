@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/MicahParks/jwkset"
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/duynhlab/pkg/grpcx"
 	authv1 "github.com/duynhlab/pkg/proto/auth/v1"
@@ -116,10 +117,18 @@ func NewVerifier(jwksURL, issuer, audience string) (*Verifier, error) {
 }
 
 // verify parses and validates tokenString. It returns errTransient (wrapped)
-// when the signing key cannot be supplied (JWKS unreachable / refresh failed),
-// and a plain validation error for an invalid token (bad signature, expired,
-// wrong issuer/audience, malformed, missing exp, disallowed alg). RS256 is
-// pinned to defend against algorithm-confusion attacks.
+// ONLY on genuine JWKS unavailability (the endpoint is unreachable and the key
+// set was never successfully loaded), and a plain validation error for an
+// invalid token — bad signature, expired, wrong issuer/audience, malformed,
+// missing exp, disallowed/mismatched alg, or an unknown kid. RS256 is pinned to
+// defend against algorithm-confusion attacks.
+//
+// Classification note: an unknown kid and a JWKS outage BOTH surface from
+// keyfunc as jwkset.ErrKeyNotFound — jwkset swallows a failed refresh and falls
+// through to "not found", so the sentinel alone cannot tell them apart. An
+// attacker-controlled forged kid must be a 401, so ErrKeyNotFound defaults to
+// invalid; it is only reclassified as transient (503) when the cached JWK set is
+// actually empty, i.e. the endpoint never delivered any keys.
 func (v *Verifier) verify(tokenString string) (*verifiedClaims, error) {
 	token, err := jwt.Parse(
 		tokenString,
@@ -130,12 +139,11 @@ func (v *Verifier) verify(tokenString string) (*verifiedClaims, error) {
 		jwt.WithExpirationRequired(),
 	)
 	if err != nil {
-		// A key-supply failure (JWKS unreachable, kid not found) surfaces as
-		// ErrTokenUnverifiable wrapping keyfunc.ErrKeyfunc; classify it as
-		// transient so the caller can answer 503 instead of 401. A token whose
-		// key WAS found but failed verification (signature/expiry/iss/aud)
-		// surfaces as a distinct sentinel and stays an invalid-token error.
-		if errors.Is(err, keyfunc.ErrKeyfunc) || errors.Is(err, jwt.ErrTokenUnverifiable) {
+		// Genuine key unavailability (JWKS never loaded) is the only transient
+		// case → 503. Everything else — unknown kid against a loaded set, alg
+		// mismatch/missing alg, bad signature, expiry, iss/aud — is an invalid
+		// token → 401.
+		if errors.Is(err, jwkset.ErrKeyNotFound) && v.jwksUnavailable() {
 			return nil, errors.Join(errTransient, err)
 		}
 		return nil, err
@@ -150,6 +158,17 @@ func (v *Verifier) verify(tokenString string) (*verifiedClaims, error) {
 		username: stringClaim(claims, "username"),
 		email:    stringClaim(claims, "email"),
 	}, nil
+}
+
+// jwksUnavailable reports whether the JWK set is genuinely unavailable: the
+// backing storage errors or holds no keys at all (the endpoint was never
+// reachable / never delivered a key). It is the discriminator that separates a
+// real JWKS outage (→ 503) from an attacker-supplied unknown kid checked
+// against a healthy, populated set (→ 401), since both otherwise surface as
+// jwkset.ErrKeyNotFound.
+func (v *Verifier) jwksUnavailable() bool {
+	keys, err := v.kf.Storage().KeyReadAll(context.Background())
+	return err != nil || len(keys) == 0
 }
 
 func stringClaim(claims jwt.MapClaims, key string) string {
