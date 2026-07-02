@@ -7,10 +7,3 @@ lint:
 breaking:
   use:
     - FILE
-  # TEMPORARY (RFC-0009 Phase 5): allow the intentional deletion of the dead
-  # auth/v1 GetMe contract — consumers verify JWTs locally, no RPC remains.
-  # Path-based `ignore` cannot suppress FILE_NO_DELETE (the error is attributed
-  # to the whole input, not the deleted path), so the rule is excepted instead.
-  # Restore FILE_NO_DELETE (drop this `except`) right after this lands on main.
-  except:
-    - FILE_NO_DELETE
