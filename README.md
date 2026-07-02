@@ -16,14 +16,14 @@ up to date.
 
 | Package | What it provides |
 |---------|------------------|
-| `grpcx` | gRPC server/client helpers for east-west calls — `NewServer` (otelgrpc + health + reflection), `Dial` (otelgrpc + `round_robin` over `dns:///` + default per-RPC timeout), `WithAuthToken`/`TokenFromContext` for `authorization` metadata. Plaintext transport (mTLS later). |
-| `authmw` | Fail-closed Gin JWT middleware — validates the bearer token via auth `GetMe` over gRPC; missing/invalid → 401, auth unreachable → 503 (still denies); sets `user_id`/`username`/`email` on the context. |
+| `grpcx` | gRPC server/client helpers for east-west calls — `NewServer` (otelgrpc + health + reflection), `Dial` (otelgrpc + `round_robin` over `dns:///` + default per-RPC timeout). Plaintext transport (mTLS later). |
+| `authmw` | Fail-closed Gin JWT middleware — verifies RS256 bearer tokens locally against a cached JWKS (issuer/audience pinned, RS256-only); missing/invalid → 401, JWKS unavailable → 503 (still denies); sets `user_id`/`username`/`email` on the context. |
 | `obsx` | Observability bootstrap: `SetupMetrics` (gRPC RED metrics on the existing `/metrics`), `SetupProfiling` (Pyroscope continuous profiling), `TracerProviderWithProfiles` (traces↔profiles), `TraceIDFromContext` (log↔trace correlation). |
 | `temporalx` | Temporal client/worker bootstrap with the OTel tracing interceptor wired in — `Dial(Config{HostPort, Namespace})`, `NewWorker(client, taskQueue)`. Used by the order-fulfillment saga. |
 | `migratex` | Runs embedded SQL schema migrations with golang-migrate — `Run(fsys, dir, dsn)`. |
 | `httpx` | Shared HTTP helpers — consistent error responses (`RespondError`) and pagination (`ParsePage`, `NewPaginated`). |
 | `logger/zerolog`, `logger/clog`, `logger/zapx` | Structured loggers (`Setup(level)` + context helpers) with trace-ID injection. |
-| `proto/<svc>/v1` | Versioned `.proto` contracts + **committed** generated stubs for `auth`, `notification`, `product`, `review`, `shipping`. |
+| `proto/<svc>/v1` | Versioned `.proto` contracts + **committed** generated stubs for `notification`, `product`, `review`, `shipping`. |
 
 > Authoritative per-package detail lives in [`AGENTS.md`](AGENTS.md).
 

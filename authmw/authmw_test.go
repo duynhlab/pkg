@@ -1,7 +1,6 @@
 package authmw
 
 import (
-	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
@@ -12,74 +11,9 @@ import (
 	"testing"
 	"time"
 
-	authv1 "github.com/duynhlab/pkg/proto/auth/v1"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
-
-type fakeValidator struct {
-	resp   *authv1.GetMeResponse
-	err    error
-	called bool
-}
-
-func (f *fakeValidator) GetMe(_ context.Context, _ *authv1.GetMeRequest, _ ...grpc.CallOption) (*authv1.GetMeResponse, error) {
-	f.called = true
-	return f.resp, f.err
-}
-
-func TestMiddleware(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	okResp := &authv1.GetMeResponse{User: &authv1.User{Id: "7", Username: "bob", Email: "bob@example.com"}}
-
-	tests := []struct {
-		name       string
-		authHeader string
-		val        *fakeValidator
-		wantStatus int
-		wantUserID string
-		wantCalled bool
-	}{
-		{name: "missing header fails closed without calling auth", authHeader: "", val: &fakeValidator{}, wantStatus: http.StatusUnauthorized, wantCalled: false},
-		{name: "unauthenticated maps to 401", authHeader: "Bearer bad", val: &fakeValidator{err: status.Error(codes.Unauthenticated, "nope")}, wantStatus: http.StatusUnauthorized, wantCalled: true},
-		{name: "auth unreachable maps to 503", authHeader: "Bearer x", val: &fakeValidator{err: status.Error(codes.Unavailable, "down")}, wantStatus: http.StatusServiceUnavailable, wantCalled: true},
-		{name: "internal error maps to 503", authHeader: "Bearer x", val: &fakeValidator{err: status.Error(codes.Internal, "boom")}, wantStatus: http.StatusServiceUnavailable, wantCalled: true},
-		{name: "success sets user and continues", authHeader: "Bearer good", val: &fakeValidator{resp: okResp}, wantStatus: http.StatusOK, wantUserID: "7", wantCalled: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var gotUserID string
-			r := gin.New()
-			r.Use(Middleware(tt.val))
-			r.GET("/x", func(c *gin.Context) {
-				gotUserID = c.GetString(CtxUserID)
-				c.Status(http.StatusOK)
-			})
-
-			req := httptest.NewRequest(http.MethodGet, "/x", nil)
-			if tt.authHeader != "" {
-				req.Header.Set("Authorization", tt.authHeader)
-			}
-			w := httptest.NewRecorder()
-			r.ServeHTTP(w, req)
-
-			if w.Code != tt.wantStatus {
-				t.Errorf("status = %d, want %d", w.Code, tt.wantStatus)
-			}
-			if tt.val.called != tt.wantCalled {
-				t.Errorf("validator called = %v, want %v", tt.val.called, tt.wantCalled)
-			}
-			if tt.wantUserID != "" && gotUserID != tt.wantUserID {
-				t.Errorf("user_id = %q, want %q", gotUserID, tt.wantUserID)
-			}
-		})
-	}
-}
 
 // --- JWT / JWKS test harness -------------------------------------------------
 
@@ -198,21 +132,18 @@ func TestMiddlewareJWT(t *testing.T) {
 	}()
 
 	tests := []struct {
-		name        string
-		token       string // raw token; "" means no Authorization header
-		bearer      bool   // wrap token in "Bearer " prefix
-		verifier    *Verifier
-		fallback    *fakeValidator
-		wantStatus  int
-		wantUserID  string
-		wantFBCalls bool
+		name       string
+		token      string // raw token; "" means no Authorization header
+		bearer     bool   // wrap token in "Bearer " prefix
+		verifier   *Verifier
+		wantStatus int
+		wantUserID string
 	}{
 		{
 			name:       "valid JWT",
 			token:      signRS256(t, key, testKID, validClaims(iss, aud, time.Now().Add(time.Hour))),
 			bearer:     true,
 			verifier:   verifier,
-			fallback:   &fakeValidator{},
 			wantStatus: http.StatusOK,
 			wantUserID: "42",
 		},
@@ -221,7 +152,6 @@ func TestMiddlewareJWT(t *testing.T) {
 			token:      signRS256(t, key, testKID, validClaims(iss, aud, time.Now().Add(-time.Hour))),
 			bearer:     true,
 			verifier:   verifier,
-			fallback:   &fakeValidator{},
 			wantStatus: http.StatusUnauthorized,
 		},
 		{
@@ -229,7 +159,6 @@ func TestMiddlewareJWT(t *testing.T) {
 			token:      signRS256(t, key, testKID, validClaims("https://evil.example", aud, time.Now().Add(time.Hour))),
 			bearer:     true,
 			verifier:   verifier,
-			fallback:   &fakeValidator{},
 			wantStatus: http.StatusUnauthorized,
 		},
 		{
@@ -237,7 +166,6 @@ func TestMiddlewareJWT(t *testing.T) {
 			token:      signRS256(t, key, testKID, validClaims(iss, "other-aud", time.Now().Add(time.Hour))),
 			bearer:     true,
 			verifier:   verifier,
-			fallback:   &fakeValidator{},
 			wantStatus: http.StatusUnauthorized,
 		},
 		{
@@ -245,7 +173,6 @@ func TestMiddlewareJWT(t *testing.T) {
 			token:      signRS256(t, otherKey, testKID, validClaims(iss, aud, time.Now().Add(time.Hour))),
 			bearer:     true,
 			verifier:   verifier,
-			fallback:   &fakeValidator{},
 			wantStatus: http.StatusUnauthorized,
 		},
 		{
@@ -255,7 +182,6 @@ func TestMiddlewareJWT(t *testing.T) {
 			token:      signRS256(t, key, "no-such-kid", validClaims(iss, aud, time.Now().Add(time.Hour))),
 			bearer:     true,
 			verifier:   verifier,
-			fallback:   &fakeValidator{},
 			wantStatus: http.StatusUnauthorized,
 		},
 		{
@@ -263,7 +189,6 @@ func TestMiddlewareJWT(t *testing.T) {
 			token:      missingAlgToken,
 			bearer:     true,
 			verifier:   verifier,
-			fallback:   &fakeValidator{},
 			wantStatus: http.StatusUnauthorized,
 		},
 		{
@@ -271,7 +196,6 @@ func TestMiddlewareJWT(t *testing.T) {
 			token:      noneToken,
 			bearer:     true,
 			verifier:   verifier,
-			fallback:   &fakeValidator{},
 			wantStatus: http.StatusUnauthorized,
 		},
 		{
@@ -279,51 +203,31 @@ func TestMiddlewareJWT(t *testing.T) {
 			token:      hsToken,
 			bearer:     true,
 			verifier:   verifier,
-			fallback:   &fakeValidator{},
 			wantStatus: http.StatusUnauthorized,
 		},
 		{
-			name:        "opaque success -> fallback used 200",
-			token:       "opaque-token",
-			bearer:      true,
-			verifier:    verifier,
-			fallback:    &fakeValidator{resp: &authv1.GetMeResponse{User: &authv1.User{Id: "7", Username: "bob", Email: "bob@example.com"}}},
-			wantStatus:  http.StatusOK,
-			wantUserID:  "7",
-			wantFBCalls: true,
-		},
-		{
-			name:        "opaque Unauthenticated -> 401",
-			token:       "opaque-token",
-			bearer:      true,
-			verifier:    verifier,
-			fallback:    &fakeValidator{err: status.Error(codes.Unauthenticated, "nope")},
-			wantStatus:  http.StatusUnauthorized,
-			wantFBCalls: true,
-		},
-		{
-			name:        "opaque Unavailable -> 503",
-			token:       "opaque-token",
-			bearer:      true,
-			verifier:    verifier,
-			fallback:    &fakeValidator{err: status.Error(codes.Unavailable, "down")},
-			wantStatus:  http.StatusServiceUnavailable,
-			wantFBCalls: true,
+			// Opaque tokens are no longer a credential (RFC-0009 Phase 5):
+			// anything that is not a compact JWS is rejected outright.
+			name:       "opaque token -> 401",
+			token:      "opaque-token",
+			bearer:     true,
+			verifier:   verifier,
+			wantStatus: http.StatusUnauthorized,
 		},
 		{
 			name:       "missing header -> 401, verifier not consulted",
 			token:      "",
 			verifier:   verifier,
-			fallback:   &fakeValidator{},
 			wantStatus: http.StatusUnauthorized,
 		},
 		{
-			name:       "nil fallback + opaque token -> 401",
-			token:      "opaque-token",
+			// Defence-in-depth: a nil verifier means the service cannot verify
+			// anything — deny as transient (503), never fall open.
+			name:       "nil verifier -> 503",
+			token:      "aaa.bbb.ccc",
 			bearer:     true,
-			verifier:   verifier,
-			fallback:   nil,
-			wantStatus: http.StatusUnauthorized,
+			verifier:   nil,
+			wantStatus: http.StatusServiceUnavailable,
 		},
 	}
 
@@ -331,11 +235,7 @@ func TestMiddlewareJWT(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var gotUserID string
 			r := gin.New()
-			var fb Validator
-			if tt.fallback != nil {
-				fb = tt.fallback
-			}
-			r.Use(MiddlewareJWT(tt.verifier, fb))
+			r.Use(MiddlewareJWT(tt.verifier))
 			r.GET("/x", func(c *gin.Context) {
 				gotUserID = c.GetString(CtxUserID)
 				c.Status(http.StatusOK)
@@ -357,9 +257,6 @@ func TestMiddlewareJWT(t *testing.T) {
 			}
 			if tt.wantUserID != "" && gotUserID != tt.wantUserID {
 				t.Errorf("user_id = %q, want %q", gotUserID, tt.wantUserID)
-			}
-			if tt.fallback != nil && tt.fallback.called != tt.wantFBCalls {
-				t.Errorf("fallback called = %v, want %v", tt.fallback.called, tt.wantFBCalls)
 			}
 		})
 	}
@@ -390,7 +287,7 @@ func TestMiddlewareJWT_TransientKeyFetch(t *testing.T) {
 	token := signRS256(t, key, testKID, validClaims(iss, aud, time.Now().Add(time.Hour)))
 
 	r := gin.New()
-	r.Use(MiddlewareJWT(verifier, &fakeValidator{}))
+	r.Use(MiddlewareJWT(verifier))
 	r.GET("/x", func(c *gin.Context) { c.Status(http.StatusOK) })
 
 	req := httptest.NewRequest(http.MethodGet, "/x", nil)
@@ -400,36 +297,5 @@ func TestMiddlewareJWT_TransientKeyFetch(t *testing.T) {
 
 	if w.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d (body %s)", w.Code, http.StatusServiceUnavailable, w.Body.String())
-	}
-}
-
-// TestMiddlewareJWT_NilVerifierFallsThrough verifies a JWT-shaped token with a
-// nil verifier is treated as opaque (fallback consulted).
-func TestMiddlewareJWT_NilVerifierFallsThrough(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	fb := &fakeValidator{resp: &authv1.GetMeResponse{User: &authv1.User{Id: "9", Username: "dan", Email: "dan@example.com"}}}
-	r := gin.New()
-	r.Use(MiddlewareJWT(nil, fb))
-	var gotUserID string
-	r.GET("/x", func(c *gin.Context) {
-		gotUserID = c.GetString(CtxUserID)
-		c.Status(http.StatusOK)
-	})
-
-	// A JWT-shaped string (two dots) but verifier is nil.
-	req := httptest.NewRequest(http.MethodGet, "/x", nil)
-	req.Header.Set("Authorization", "Bearer aaa.bbb.ccc")
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want 200 (body %s)", w.Code, w.Body.String())
-	}
-	if !fb.called {
-		t.Error("fallback not called for nil-verifier JWT-shaped token")
-	}
-	if gotUserID != "9" {
-		t.Errorf("user_id = %q, want 9", gotUserID)
 	}
 }

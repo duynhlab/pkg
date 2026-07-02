@@ -1,12 +1,11 @@
 // Package authmw provides a single, shared, fail-closed gin middleware that
-// validates a request's bearer token by calling the auth service's GetMe over
-// gRPC. It replaces the per-service copy-paste auth middleware so the
-// security-critical fail-closed behaviour lives in exactly one place (the
-// previous duplication is what let a fail-open regression slip into one service).
+// verifies RS256 JWT bearer tokens locally against a cached, periodically
+// refreshed JWKS. It replaces the per-service copy-paste auth middleware so the
+// security-critical fail-closed behaviour lives in exactly one place.
 //
-// MiddlewareJWT additionally supports LOCAL verification of RS256 JWTs against a
-// cached JWKS (Verifier), falling back to the opaque GetMe path for non-JWT
-// tokens. Both paths remain fail-closed.
+// JWT is the only supported credential (RFC-0009 Phase 5): the legacy opaque
+// session tokens and the auth.GetMe gRPC fallback were removed once every
+// caller presented JWTs.
 package authmw
 
 import (
@@ -17,13 +16,8 @@ import (
 
 	"github.com/MicahParks/jwkset"
 	"github.com/MicahParks/keyfunc/v3"
-	"github.com/duynhlab/pkg/grpcx"
-	authv1 "github.com/duynhlab/pkg/proto/auth/v1"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // Context keys set on a successful authentication.
@@ -33,58 +27,8 @@ const (
 	CtxEmail    = "email"
 )
 
-// msgInvalidToken is the 401 response body shared by the opaque and JWT paths.
+// msgInvalidToken is the shared 401 response body.
 const msgInvalidToken = "Invalid or expired token"
-
-// Validator is the subset of authv1.AuthServiceClient the middleware needs.
-// The generated client satisfies it; tests provide a fake.
-type Validator interface {
-	GetMe(ctx context.Context, in *authv1.GetMeRequest, opts ...grpc.CallOption) (*authv1.GetMeResponse, error)
-}
-
-// Middleware returns a gin middleware that validates the Authorization bearer
-// token via auth.GetMe (gRPC), forwarding the token in gRPC metadata. It fails
-// closed:
-//   - missing Authorization header           -> 401
-//   - auth reports Unauthenticated            -> 401
-//   - auth is unreachable / any other error   -> 503 (still denies the request)
-//
-// On success it sets user_id/username/email in the gin context.
-func Middleware(client Validator) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		authz := c.GetHeader("Authorization")
-		if authz == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
-			return
-		}
-		authenticateOpaque(c, client, authz)
-	}
-}
-
-// authenticateOpaque runs the opaque-token path: validate authz via auth.GetMe
-// (gRPC), mapping Unauthenticated -> 401 and any other/unreachable error -> 503,
-// and on success set the Ctx* values and call c.Next(). It is the single source
-// of truth shared by Middleware and MiddlewareJWT's opaque branch.
-func authenticateOpaque(c *gin.Context, client Validator, authz string) {
-	ctx := grpcx.WithAuthToken(c.Request.Context(), authz)
-	resp, err := client.GetMe(ctx, &authv1.GetMeRequest{})
-	if err != nil {
-		if status.Code(err) == codes.Unauthenticated {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": msgInvalidToken})
-			return
-		}
-		// Auth unreachable or internal error: deny, but signal it's transient
-		// rather than masquerading as an auth failure.
-		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "Authentication temporarily unavailable"})
-		return
-	}
-
-	user := resp.GetUser()
-	c.Set(CtxUserID, user.GetId())
-	c.Set(CtxUsername, user.GetUsername())
-	c.Set(CtxEmail, user.GetEmail())
-	c.Next()
-}
 
 // errTransient marks a key-fetch / JWKS-unavailable failure, as opposed to an
 // invalid token. The two map to different HTTP statuses (503 vs 401), so the
@@ -178,19 +122,15 @@ func stringClaim(claims jwt.MapClaims, key string) string {
 	return ""
 }
 
-// MiddlewareJWT returns a dual-verify gin middleware. JWT-shaped tokens are
-// verified locally by verifier; opaque tokens fall back to fallback.GetMe. Both
-// paths are fail-closed. Behaviour:
-//   - missing Authorization header             -> 401 (neither path consulted)
-//   - JWT-shaped, valid                         -> sets Ctx* and continues
-//   - JWT-shaped, invalid (sig/exp/iss/aud/alg) -> 401
-//   - JWT-shaped, key unavailable (JWKS down)   -> 503
-//   - JWT-shaped but verifier is nil            -> treated as opaque (fallback)
-//   - opaque, fallback success                  -> sets Ctx* and continues
-//   - opaque, Unauthenticated                   -> 401
-//   - opaque, unreachable / other               -> 503
-//   - opaque with no fallback                   -> 401
-func MiddlewareJWT(verifier *Verifier, fallback Validator) gin.HandlerFunc {
+// MiddlewareJWT returns a JWT-only, fail-closed gin middleware. Behaviour:
+//   - missing Authorization header             -> 401 (verifier not consulted)
+//   - nil verifier                              -> 503 (cannot verify anything;
+//     services treat a failed NewVerifier as fatal, this is defence-in-depth)
+//   - not JWT-shaped (no compact-JWS form)      -> 401
+//   - valid JWT                                 -> sets Ctx* and continues
+//   - invalid JWT (sig/exp/iss/aud/alg/kid)     -> 401
+//   - key unavailable (JWKS never loaded)       -> 503
+func MiddlewareJWT(verifier *Verifier) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authz := c.GetHeader("Authorization")
 		if authz == "" {
@@ -198,23 +138,24 @@ func MiddlewareJWT(verifier *Verifier, fallback Validator) gin.HandlerFunc {
 			return
 		}
 
-		// A compact JWS has exactly two dots; otherwise treat it as opaque.
-		if tok := bearerToken(authz); strings.Count(tok, ".") == 2 && verifier != nil {
-			authenticateJWT(c, verifier, tok)
+		if verifier == nil {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "Authentication temporarily unavailable"})
 			return
 		}
 
-		// Opaque path (or JWT-shaped with no verifier): require a fallback.
-		if fallback == nil {
+		// A compact JWS has exactly two dots; anything else is not a JWT and is
+		// rejected outright (opaque tokens are no longer a credential).
+		tok := bearerToken(authz)
+		if strings.Count(tok, ".") != 2 {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": msgInvalidToken})
 			return
 		}
-		authenticateOpaque(c, fallback, authz)
+
+		authenticateJWT(c, verifier, tok)
 	}
 }
 
-// bearerToken strips a case-insensitive "Bearer " prefix for JWT shape
-// detection; the caller still forwards the ORIGINAL header to the opaque path.
+// bearerToken strips a case-insensitive "Bearer " prefix.
 func bearerToken(authz string) string {
 	if len(authz) >= 7 && strings.EqualFold(authz[:7], "bearer ") {
 		return strings.TrimSpace(authz[7:])
