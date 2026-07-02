@@ -77,7 +77,7 @@ after editing a `.proto`, then commit the result.
 ## Conventions
 
 - **Versioned releases.** Consumers pin a tag:
-  `go get github.com/duynhlab/pkg@vX.Y.Z`. Current: **v0.3.0**.
+  `go get github.com/duynhlab/pkg@vX.Y.Z` — check `git tag --sort=-v:refname` for the latest.
 - Protobuf package is `<svc>.v1`; contracts live in `proto/<svc>/v1/*.proto`.
 - `buf` drives codegen (`buf.gen.yaml`: `protoc-gen-go` + `protoc-gen-go-grpc`,
   `paths=source_relative`) and lint/breaking checks (`buf.yaml`).
