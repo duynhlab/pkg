@@ -18,6 +18,17 @@ const (
 	CodeForbidden    = "FORBIDDEN"
 	CodeConflict     = "CONFLICT"
 	CodeInternal     = "INTERNAL_ERROR"
+
+	// Payment codes (RFC-0010). PAYMENT_DECLINED is returned with HTTP 422 —
+	// the request is semantically valid but the provider declined it; 422 is
+	// deliberately new to the platform (the documented set previously stopped
+	// at 400/401/403/404/409/500).
+	CodeIdempotencyKeyRequired = "IDEMPOTENCY_KEY_REQUIRED" // 400: Idempotency-Key header missing
+	CodeIdempotencyConflict    = "IDEMPOTENCY_CONFLICT"     // 409: same key, different request hash
+	CodeInvalidTransition      = "INVALID_TRANSITION"       // 409: state machine rejected the move
+	CodePaymentExists          = "PAYMENT_EXISTS"           // 409: order already has a payment
+	CodeRefundExceedsCapture   = "REFUND_EXCEEDS_CAPTURE"   // 409: refunds would exceed captured amount
+	CodePaymentDeclined        = "PAYMENT_DECLINED"         // 422: provider declined the charge
 )
 
 // RespondError writes the standard error envelope:
