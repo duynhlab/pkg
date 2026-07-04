@@ -36,8 +36,8 @@ service PaymentService {
 message AuthorizeRequest {
   int64 order_id = 1;
   int64 user_id = 2;
-  int64 amount_minor = 3;   // minor units (cents); must match the order total
-  string currency = 4;      // ISO 4217; "USD" in v1 (mismatch → INVALID_ARGUMENT)
+  int64 amount_minor = 3; // minor units (cents); must match the order total
+  string currency = 4; // ISO 4217; "USD" in v1 (mismatch → INVALID_ARGUMENT)
   string payment_method = 5; // opaque token, never PAN-like data
 }
 

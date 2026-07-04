@@ -36,7 +36,9 @@ CREATE TABLE idempotency_keys (
 	UNIQUE (user_id, idem_key)
 );`
 
-func newTestPool(t *testing.T) *pgxpool.Pool {
+// newTestPool starts Postgres, applies the schema, and returns a ready pool plus
+// the DSN (so a test can open a second, independently-closable pool).
+func newTestPool(t *testing.T) (*pgxpool.Pool, string) {
 	t.Helper()
 	ctx := context.Background()
 	container, err := postgres.Run(ctx, "postgres:16-alpine",
@@ -60,11 +62,11 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 	if _, err := pool.Exec(ctx, schema); err != nil {
 		t.Fatalf("schema: %v", err)
 	}
-	return pool
+	return pool, dsn
 }
 
 func TestRepository_Integration(t *testing.T) {
-	pool := newTestPool(t)
+	pool, dsn := newTestPool(t)
 	ctx := context.Background()
 	repo := New(pool, 90*time.Second)
 
@@ -158,6 +160,32 @@ func TestRepository_Integration(t *testing.T) {
 		n, err := repo.Reap(ctx, 24*time.Hour)
 		if err != nil || n < 1 {
 			t.Fatalf("reap should remove the aged key: n=%d err=%v", n, err)
+		}
+	})
+
+	// Every method wraps its DB error; a closed pool exercises those paths.
+	t.Run("closed pool surfaces errors", func(t *testing.T) {
+		dead, err := pgxpool.New(ctx, dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dead.Close()
+		dr := New(dead, 90*time.Second)
+		sid := int64(1)
+		if _, _, err := dr.Claim(ctx, 9, "kx", "POST", "/pay", "h"); err == nil {
+			t.Fatal("Claim must error on a closed pool")
+		}
+		if err := dr.Checkpoint(ctx, 1, &sid); err == nil {
+			t.Fatal("Checkpoint must error")
+		}
+		if err := dr.Release(ctx, 1); err == nil {
+			t.Fatal("Release must error")
+		}
+		if err := dr.Finish(ctx, 1, 200, []byte(`{}`)); err == nil {
+			t.Fatal("Finish must error")
+		}
+		if _, err := dr.Reap(ctx, time.Hour); err == nil {
+			t.Fatal("Reap must error")
 		}
 	})
 }
