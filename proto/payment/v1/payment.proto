@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package payment.v1;
+
+option go_package = "github.com/duynhlab/pkg/proto/payment/v1;paymentv1";
+
+// PaymentService is the internal (east-west) contract the order-fulfillment saga
+// uses to move money: authorize a hold before reserving stock, capture it just
+// before confirming the order, and void/refund as compensations. Browser traffic
+// keeps using payment's REST surface; this gRPC surface is saga-only.
+//
+// Every RPC is idempotent by the natural business key (order_id) — the saga needs
+// no client-generated key, and a Temporal activity retry re-drives safely:
+// re-authorizing an order returns its existing payment, and capture/void are
+// no-ops once the payment is already in the target state.
+service PaymentService {
+  // Authorize places (or returns) the hold for an order. Idempotent by order_id
+  // — one payment per order — so a retry returns the existing payment rather than
+  // creating a second. A provider decline yields status = "failed" with a
+  // decline_code (a normal response, not a gRPC error).
+  rpc Authorize(AuthorizeRequest) returns (AuthorizeResponse);
+
+  // Capture captures the authorized hold (money moves). Idempotent: capturing an
+  // already-captured payment returns it unchanged.
+  rpc Capture(CaptureRequest) returns (CaptureResponse);
+
+  // Void releases the authorized hold (compensation for Authorize). Idempotent:
+  // voiding an already-voided payment succeeds.
+  rpc Void(VoidRequest) returns (VoidResponse);
+
+  // Refund returns captured money (compensation once captured). Idempotent by the
+  // order (server key refund:{order_id}) — a retry returns the same refund.
+  rpc Refund(RefundRequest) returns (RefundResponse);
+}
+
+message AuthorizeRequest {
+  int64 order_id = 1;
+  int64 user_id = 2;
+  int64 amount_minor = 3; // minor units (cents); must match the order total
+  string currency = 4; // ISO 4217; "USD" in v1 (mismatch → INVALID_ARGUMENT)
+  string payment_method = 5; // opaque token, never PAN-like data
+}
+
+message CaptureRequest {
+  int64 order_id = 1;
+}
+
+message VoidRequest {
+  int64 order_id = 1;
+}
+
+message RefundRequest {
+  int64 order_id = 1;
+  int64 amount_minor = 2; // amount to refund in minor units
+  string reason = 3;
+}
+
+// Payment is the payment's post-operation snapshot, shared by the authorize/
+// capture/void responses.
+message Payment {
+  int64 payment_id = 1;
+  int64 order_id = 2;
+  // pending | authorized | captured | voided | expired | failed | refunded.
+  string status = 3;
+  int64 amount_minor = 4;
+  string currency = 5;
+  // Set only when status = "failed" (e.g. generic_decline, insufficient_funds).
+  string decline_code = 6;
+}
+
+// Refund is a refund's post-operation snapshot.
+message Refund {
+  int64 refund_id = 1;
+  int64 payment_id = 2;
+  // pending | succeeded | failed.
+  string status = 3;
+  int64 amount_minor = 4;
+}
+
+message AuthorizeResponse {
+  Payment payment = 1;
+}
+
+message CaptureResponse {
+  Payment payment = 1;
+}
+
+message VoidResponse {
+  Payment payment = 1;
+}
+
+message RefundResponse {
+  Refund refund = 1;
+}
