@@ -245,6 +245,50 @@ func (x *RefundRequest) GetReason() string {
 	return ""
 }
 
+type GetPaymentRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OrderId       int64                  `protobuf:"varint,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetPaymentRequest) Reset() {
+	*x = GetPaymentRequest{}
+	mi := &file_payment_v1_payment_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetPaymentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetPaymentRequest) ProtoMessage() {}
+
+func (x *GetPaymentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_payment_v1_payment_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetPaymentRequest.ProtoReflect.Descriptor instead.
+func (*GetPaymentRequest) Descriptor() ([]byte, []int) {
+	return file_payment_v1_payment_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *GetPaymentRequest) GetOrderId() int64 {
+	if x != nil {
+		return x.OrderId
+	}
+	return 0
+}
+
 // Payment is the payment's post-operation snapshot, shared by the authorize/
 // capture/void responses.
 type Payment struct {
@@ -263,7 +307,7 @@ type Payment struct {
 
 func (x *Payment) Reset() {
 	*x = Payment{}
-	mi := &file_payment_v1_payment_proto_msgTypes[4]
+	mi := &file_payment_v1_payment_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -275,7 +319,7 @@ func (x *Payment) String() string {
 func (*Payment) ProtoMessage() {}
 
 func (x *Payment) ProtoReflect() protoreflect.Message {
-	mi := &file_payment_v1_payment_proto_msgTypes[4]
+	mi := &file_payment_v1_payment_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -288,7 +332,7 @@ func (x *Payment) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Payment.ProtoReflect.Descriptor instead.
 func (*Payment) Descriptor() ([]byte, []int) {
-	return file_payment_v1_payment_proto_rawDescGZIP(), []int{4}
+	return file_payment_v1_payment_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Payment) GetPaymentId() int64 {
@@ -347,7 +391,7 @@ type Refund struct {
 
 func (x *Refund) Reset() {
 	*x = Refund{}
-	mi := &file_payment_v1_payment_proto_msgTypes[5]
+	mi := &file_payment_v1_payment_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -359,7 +403,7 @@ func (x *Refund) String() string {
 func (*Refund) ProtoMessage() {}
 
 func (x *Refund) ProtoReflect() protoreflect.Message {
-	mi := &file_payment_v1_payment_proto_msgTypes[5]
+	mi := &file_payment_v1_payment_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -372,7 +416,7 @@ func (x *Refund) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Refund.ProtoReflect.Descriptor instead.
 func (*Refund) Descriptor() ([]byte, []int) {
-	return file_payment_v1_payment_proto_rawDescGZIP(), []int{5}
+	return file_payment_v1_payment_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Refund) GetRefundId() int64 {
@@ -412,7 +456,7 @@ type AuthorizeResponse struct {
 
 func (x *AuthorizeResponse) Reset() {
 	*x = AuthorizeResponse{}
-	mi := &file_payment_v1_payment_proto_msgTypes[6]
+	mi := &file_payment_v1_payment_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -424,7 +468,7 @@ func (x *AuthorizeResponse) String() string {
 func (*AuthorizeResponse) ProtoMessage() {}
 
 func (x *AuthorizeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_payment_v1_payment_proto_msgTypes[6]
+	mi := &file_payment_v1_payment_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -437,7 +481,7 @@ func (x *AuthorizeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthorizeResponse.ProtoReflect.Descriptor instead.
 func (*AuthorizeResponse) Descriptor() ([]byte, []int) {
-	return file_payment_v1_payment_proto_rawDescGZIP(), []int{6}
+	return file_payment_v1_payment_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *AuthorizeResponse) GetPayment() *Payment {
@@ -456,7 +500,7 @@ type CaptureResponse struct {
 
 func (x *CaptureResponse) Reset() {
 	*x = CaptureResponse{}
-	mi := &file_payment_v1_payment_proto_msgTypes[7]
+	mi := &file_payment_v1_payment_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -468,7 +512,7 @@ func (x *CaptureResponse) String() string {
 func (*CaptureResponse) ProtoMessage() {}
 
 func (x *CaptureResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_payment_v1_payment_proto_msgTypes[7]
+	mi := &file_payment_v1_payment_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -481,7 +525,7 @@ func (x *CaptureResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CaptureResponse.ProtoReflect.Descriptor instead.
 func (*CaptureResponse) Descriptor() ([]byte, []int) {
-	return file_payment_v1_payment_proto_rawDescGZIP(), []int{7}
+	return file_payment_v1_payment_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *CaptureResponse) GetPayment() *Payment {
@@ -500,7 +544,7 @@ type VoidResponse struct {
 
 func (x *VoidResponse) Reset() {
 	*x = VoidResponse{}
-	mi := &file_payment_v1_payment_proto_msgTypes[8]
+	mi := &file_payment_v1_payment_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -512,7 +556,7 @@ func (x *VoidResponse) String() string {
 func (*VoidResponse) ProtoMessage() {}
 
 func (x *VoidResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_payment_v1_payment_proto_msgTypes[8]
+	mi := &file_payment_v1_payment_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -525,7 +569,7 @@ func (x *VoidResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VoidResponse.ProtoReflect.Descriptor instead.
 func (*VoidResponse) Descriptor() ([]byte, []int) {
-	return file_payment_v1_payment_proto_rawDescGZIP(), []int{8}
+	return file_payment_v1_payment_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *VoidResponse) GetPayment() *Payment {
@@ -544,7 +588,7 @@ type RefundResponse struct {
 
 func (x *RefundResponse) Reset() {
 	*x = RefundResponse{}
-	mi := &file_payment_v1_payment_proto_msgTypes[9]
+	mi := &file_payment_v1_payment_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -556,7 +600,7 @@ func (x *RefundResponse) String() string {
 func (*RefundResponse) ProtoMessage() {}
 
 func (x *RefundResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_payment_v1_payment_proto_msgTypes[9]
+	mi := &file_payment_v1_payment_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -569,12 +613,56 @@ func (x *RefundResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RefundResponse.ProtoReflect.Descriptor instead.
 func (*RefundResponse) Descriptor() ([]byte, []int) {
-	return file_payment_v1_payment_proto_rawDescGZIP(), []int{9}
+	return file_payment_v1_payment_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *RefundResponse) GetRefund() *Refund {
 	if x != nil {
 		return x.Refund
+	}
+	return nil
+}
+
+type GetPaymentResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Payment       *Payment               `protobuf:"bytes,1,opt,name=payment,proto3" json:"payment,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetPaymentResponse) Reset() {
+	*x = GetPaymentResponse{}
+	mi := &file_payment_v1_payment_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetPaymentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetPaymentResponse) ProtoMessage() {}
+
+func (x *GetPaymentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_payment_v1_payment_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetPaymentResponse.ProtoReflect.Descriptor instead.
+func (*GetPaymentResponse) Descriptor() ([]byte, []int) {
+	return file_payment_v1_payment_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *GetPaymentResponse) GetPayment() *Payment {
+	if x != nil {
+		return x.Payment
 	}
 	return nil
 }
@@ -598,7 +686,9 @@ const file_payment_v1_payment_proto_rawDesc = "" +
 	"\rRefundRequest\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\x03R\aorderId\x12!\n" +
 	"\famount_minor\x18\x02 \x01(\x03R\vamountMinor\x12\x16\n" +
-	"\x06reason\x18\x03 \x01(\tR\x06reason\"\xbd\x01\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\".\n" +
+	"\x11GetPaymentRequest\x12\x19\n" +
+	"\border_id\x18\x01 \x01(\x03R\aorderId\"\xbd\x01\n" +
 	"\aPayment\x12\x1d\n" +
 	"\n" +
 	"payment_id\x18\x01 \x01(\x03R\tpaymentId\x12\x19\n" +
@@ -620,12 +710,16 @@ const file_payment_v1_payment_proto_rawDesc = "" +
 	"\fVoidResponse\x12-\n" +
 	"\apayment\x18\x01 \x01(\v2\x13.payment.v1.PaymentR\apayment\"<\n" +
 	"\x0eRefundResponse\x12*\n" +
-	"\x06refund\x18\x01 \x01(\v2\x12.payment.v1.RefundR\x06refund2\x9a\x02\n" +
+	"\x06refund\x18\x01 \x01(\v2\x12.payment.v1.RefundR\x06refund\"C\n" +
+	"\x12GetPaymentResponse\x12-\n" +
+	"\apayment\x18\x01 \x01(\v2\x13.payment.v1.PaymentR\apayment2\xe7\x02\n" +
 	"\x0ePaymentService\x12H\n" +
 	"\tAuthorize\x12\x1c.payment.v1.AuthorizeRequest\x1a\x1d.payment.v1.AuthorizeResponse\x12B\n" +
 	"\aCapture\x12\x1a.payment.v1.CaptureRequest\x1a\x1b.payment.v1.CaptureResponse\x129\n" +
 	"\x04Void\x12\x17.payment.v1.VoidRequest\x1a\x18.payment.v1.VoidResponse\x12?\n" +
-	"\x06Refund\x12\x19.payment.v1.RefundRequest\x1a\x1a.payment.v1.RefundResponseB\x9b\x01\n" +
+	"\x06Refund\x12\x19.payment.v1.RefundRequest\x1a\x1a.payment.v1.RefundResponse\x12K\n" +
+	"\n" +
+	"GetPayment\x12\x1d.payment.v1.GetPaymentRequest\x1a\x1e.payment.v1.GetPaymentResponseB\x9b\x01\n" +
 	"\x0ecom.payment.v1B\fPaymentProtoP\x01Z2github.com/duynhlab/pkg/proto/payment/v1;paymentv1\xa2\x02\x03PXX\xaa\x02\n" +
 	"Payment.V1\xca\x02\n" +
 	"Payment\\V1\xe2\x02\x16Payment\\V1\\GPBMetadata\xea\x02\vPayment::V1b\x06proto3"
@@ -642,37 +736,42 @@ func file_payment_v1_payment_proto_rawDescGZIP() []byte {
 	return file_payment_v1_payment_proto_rawDescData
 }
 
-var file_payment_v1_payment_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_payment_v1_payment_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_payment_v1_payment_proto_goTypes = []any{
-	(*AuthorizeRequest)(nil),  // 0: payment.v1.AuthorizeRequest
-	(*CaptureRequest)(nil),    // 1: payment.v1.CaptureRequest
-	(*VoidRequest)(nil),       // 2: payment.v1.VoidRequest
-	(*RefundRequest)(nil),     // 3: payment.v1.RefundRequest
-	(*Payment)(nil),           // 4: payment.v1.Payment
-	(*Refund)(nil),            // 5: payment.v1.Refund
-	(*AuthorizeResponse)(nil), // 6: payment.v1.AuthorizeResponse
-	(*CaptureResponse)(nil),   // 7: payment.v1.CaptureResponse
-	(*VoidResponse)(nil),      // 8: payment.v1.VoidResponse
-	(*RefundResponse)(nil),    // 9: payment.v1.RefundResponse
+	(*AuthorizeRequest)(nil),   // 0: payment.v1.AuthorizeRequest
+	(*CaptureRequest)(nil),     // 1: payment.v1.CaptureRequest
+	(*VoidRequest)(nil),        // 2: payment.v1.VoidRequest
+	(*RefundRequest)(nil),      // 3: payment.v1.RefundRequest
+	(*GetPaymentRequest)(nil),  // 4: payment.v1.GetPaymentRequest
+	(*Payment)(nil),            // 5: payment.v1.Payment
+	(*Refund)(nil),             // 6: payment.v1.Refund
+	(*AuthorizeResponse)(nil),  // 7: payment.v1.AuthorizeResponse
+	(*CaptureResponse)(nil),    // 8: payment.v1.CaptureResponse
+	(*VoidResponse)(nil),       // 9: payment.v1.VoidResponse
+	(*RefundResponse)(nil),     // 10: payment.v1.RefundResponse
+	(*GetPaymentResponse)(nil), // 11: payment.v1.GetPaymentResponse
 }
 var file_payment_v1_payment_proto_depIdxs = []int32{
-	4, // 0: payment.v1.AuthorizeResponse.payment:type_name -> payment.v1.Payment
-	4, // 1: payment.v1.CaptureResponse.payment:type_name -> payment.v1.Payment
-	4, // 2: payment.v1.VoidResponse.payment:type_name -> payment.v1.Payment
-	5, // 3: payment.v1.RefundResponse.refund:type_name -> payment.v1.Refund
-	0, // 4: payment.v1.PaymentService.Authorize:input_type -> payment.v1.AuthorizeRequest
-	1, // 5: payment.v1.PaymentService.Capture:input_type -> payment.v1.CaptureRequest
-	2, // 6: payment.v1.PaymentService.Void:input_type -> payment.v1.VoidRequest
-	3, // 7: payment.v1.PaymentService.Refund:input_type -> payment.v1.RefundRequest
-	6, // 8: payment.v1.PaymentService.Authorize:output_type -> payment.v1.AuthorizeResponse
-	7, // 9: payment.v1.PaymentService.Capture:output_type -> payment.v1.CaptureResponse
-	8, // 10: payment.v1.PaymentService.Void:output_type -> payment.v1.VoidResponse
-	9, // 11: payment.v1.PaymentService.Refund:output_type -> payment.v1.RefundResponse
-	8, // [8:12] is the sub-list for method output_type
-	4, // [4:8] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	5,  // 0: payment.v1.AuthorizeResponse.payment:type_name -> payment.v1.Payment
+	5,  // 1: payment.v1.CaptureResponse.payment:type_name -> payment.v1.Payment
+	5,  // 2: payment.v1.VoidResponse.payment:type_name -> payment.v1.Payment
+	6,  // 3: payment.v1.RefundResponse.refund:type_name -> payment.v1.Refund
+	5,  // 4: payment.v1.GetPaymentResponse.payment:type_name -> payment.v1.Payment
+	0,  // 5: payment.v1.PaymentService.Authorize:input_type -> payment.v1.AuthorizeRequest
+	1,  // 6: payment.v1.PaymentService.Capture:input_type -> payment.v1.CaptureRequest
+	2,  // 7: payment.v1.PaymentService.Void:input_type -> payment.v1.VoidRequest
+	3,  // 8: payment.v1.PaymentService.Refund:input_type -> payment.v1.RefundRequest
+	4,  // 9: payment.v1.PaymentService.GetPayment:input_type -> payment.v1.GetPaymentRequest
+	7,  // 10: payment.v1.PaymentService.Authorize:output_type -> payment.v1.AuthorizeResponse
+	8,  // 11: payment.v1.PaymentService.Capture:output_type -> payment.v1.CaptureResponse
+	9,  // 12: payment.v1.PaymentService.Void:output_type -> payment.v1.VoidResponse
+	10, // 13: payment.v1.PaymentService.Refund:output_type -> payment.v1.RefundResponse
+	11, // 14: payment.v1.PaymentService.GetPayment:output_type -> payment.v1.GetPaymentResponse
+	10, // [10:15] is the sub-list for method output_type
+	5,  // [5:10] is the sub-list for method input_type
+	5,  // [5:5] is the sub-list for extension type_name
+	5,  // [5:5] is the sub-list for extension extendee
+	0,  // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_payment_v1_payment_proto_init() }
@@ -686,7 +785,7 @@ func file_payment_v1_payment_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_payment_v1_payment_proto_rawDesc), len(file_payment_v1_payment_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   10,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
