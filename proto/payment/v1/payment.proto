@@ -78,6 +78,10 @@ message Payment {
   string currency = 5;
   // Set only when status = "failed" (e.g. generic_decline, insufficient_funds).
   string decline_code = 6;
+  // Sum of applied refunds in minor units. A partial refund keeps status =
+  // "captured" (refunded flips only when fully refunded), so callers rendering
+  // payment state must derive "partially refunded" from this field.
+  int64 refunded_minor = 7;
 }
 
 // Refund is a refund's post-operation snapshot.

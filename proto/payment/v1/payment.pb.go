@@ -300,7 +300,11 @@ type Payment struct {
 	AmountMinor int64  `protobuf:"varint,4,opt,name=amount_minor,json=amountMinor,proto3" json:"amount_minor,omitempty"`
 	Currency    string `protobuf:"bytes,5,opt,name=currency,proto3" json:"currency,omitempty"`
 	// Set only when status = "failed" (e.g. generic_decline, insufficient_funds).
-	DeclineCode   string `protobuf:"bytes,6,opt,name=decline_code,json=declineCode,proto3" json:"decline_code,omitempty"`
+	DeclineCode string `protobuf:"bytes,6,opt,name=decline_code,json=declineCode,proto3" json:"decline_code,omitempty"`
+	// Sum of applied refunds in minor units. A partial refund keeps status =
+	// "captured" (refunded flips only when fully refunded), so callers rendering
+	// payment state must derive "partially refunded" from this field.
+	RefundedMinor int64 `protobuf:"varint,7,opt,name=refunded_minor,json=refundedMinor,proto3" json:"refunded_minor,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -375,6 +379,13 @@ func (x *Payment) GetDeclineCode() string {
 		return x.DeclineCode
 	}
 	return ""
+}
+
+func (x *Payment) GetRefundedMinor() int64 {
+	if x != nil {
+		return x.RefundedMinor
+	}
+	return 0
 }
 
 // Refund is a refund's post-operation snapshot.
@@ -688,7 +699,7 @@ const file_payment_v1_payment_proto_rawDesc = "" +
 	"\famount_minor\x18\x02 \x01(\x03R\vamountMinor\x12\x16\n" +
 	"\x06reason\x18\x03 \x01(\tR\x06reason\".\n" +
 	"\x11GetPaymentRequest\x12\x19\n" +
-	"\border_id\x18\x01 \x01(\x03R\aorderId\"\xbd\x01\n" +
+	"\border_id\x18\x01 \x01(\x03R\aorderId\"\xe4\x01\n" +
 	"\aPayment\x12\x1d\n" +
 	"\n" +
 	"payment_id\x18\x01 \x01(\x03R\tpaymentId\x12\x19\n" +
@@ -696,7 +707,8 @@ const file_payment_v1_payment_proto_rawDesc = "" +
 	"\x06status\x18\x03 \x01(\tR\x06status\x12!\n" +
 	"\famount_minor\x18\x04 \x01(\x03R\vamountMinor\x12\x1a\n" +
 	"\bcurrency\x18\x05 \x01(\tR\bcurrency\x12!\n" +
-	"\fdecline_code\x18\x06 \x01(\tR\vdeclineCode\"\x7f\n" +
+	"\fdecline_code\x18\x06 \x01(\tR\vdeclineCode\x12%\n" +
+	"\x0erefunded_minor\x18\a \x01(\x03R\rrefundedMinor\"\x7f\n" +
 	"\x06Refund\x12\x1b\n" +
 	"\trefund_id\x18\x01 \x01(\x03R\brefundId\x12\x1d\n" +
 	"\n" +
