@@ -19,10 +19,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	PaymentService_Authorize_FullMethodName = "/payment.v1.PaymentService/Authorize"
-	PaymentService_Capture_FullMethodName   = "/payment.v1.PaymentService/Capture"
-	PaymentService_Void_FullMethodName      = "/payment.v1.PaymentService/Void"
-	PaymentService_Refund_FullMethodName    = "/payment.v1.PaymentService/Refund"
+	PaymentService_Authorize_FullMethodName  = "/payment.v1.PaymentService/Authorize"
+	PaymentService_Capture_FullMethodName    = "/payment.v1.PaymentService/Capture"
+	PaymentService_Void_FullMethodName       = "/payment.v1.PaymentService/Void"
+	PaymentService_Refund_FullMethodName     = "/payment.v1.PaymentService/Refund"
+	PaymentService_GetPayment_FullMethodName = "/payment.v1.PaymentService/GetPayment"
 )
 
 // PaymentServiceClient is the client API for PaymentService service.
@@ -32,7 +33,9 @@ const (
 // PaymentService is the internal (east-west) contract the order-fulfillment saga
 // uses to move money: authorize a hold before reserving stock, capture it just
 // before confirming the order, and void/refund as compensations. Browser traffic
-// keeps using payment's REST surface; this gRPC surface is saga-only.
+// keeps using payment's REST surface; this gRPC surface is internal east-west
+// (the saga's money operations, plus the read the order service uses to enrich
+// order details with payment status).
 //
 // Every RPC is idempotent by the natural business key (order_id) — the saga needs
 // no client-generated key, and a Temporal activity retry re-drives safely:
@@ -53,6 +56,11 @@ type PaymentServiceClient interface {
 	// Refund returns captured money (compensation once captured). Idempotent by the
 	// order (server key refund:{order_id}) — a retry returns the same refund.
 	Refund(ctx context.Context, in *RefundRequest, opts ...grpc.CallOption) (*RefundResponse, error)
+	// GetPayment returns the order's payment snapshot (read-only). The caller is
+	// expected to have owner-scoped the order already — this internal surface
+	// carries no end-user identity (NetworkPolicy is the fence). NOT_FOUND when
+	// the order has no payment.
+	GetPayment(ctx context.Context, in *GetPaymentRequest, opts ...grpc.CallOption) (*GetPaymentResponse, error)
 }
 
 type paymentServiceClient struct {
@@ -103,6 +111,16 @@ func (c *paymentServiceClient) Refund(ctx context.Context, in *RefundRequest, op
 	return out, nil
 }
 
+func (c *paymentServiceClient) GetPayment(ctx context.Context, in *GetPaymentRequest, opts ...grpc.CallOption) (*GetPaymentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetPaymentResponse)
+	err := c.cc.Invoke(ctx, PaymentService_GetPayment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PaymentServiceServer is the server API for PaymentService service.
 // All implementations must embed UnimplementedPaymentServiceServer
 // for forward compatibility.
@@ -110,7 +128,9 @@ func (c *paymentServiceClient) Refund(ctx context.Context, in *RefundRequest, op
 // PaymentService is the internal (east-west) contract the order-fulfillment saga
 // uses to move money: authorize a hold before reserving stock, capture it just
 // before confirming the order, and void/refund as compensations. Browser traffic
-// keeps using payment's REST surface; this gRPC surface is saga-only.
+// keeps using payment's REST surface; this gRPC surface is internal east-west
+// (the saga's money operations, plus the read the order service uses to enrich
+// order details with payment status).
 //
 // Every RPC is idempotent by the natural business key (order_id) — the saga needs
 // no client-generated key, and a Temporal activity retry re-drives safely:
@@ -131,6 +151,11 @@ type PaymentServiceServer interface {
 	// Refund returns captured money (compensation once captured). Idempotent by the
 	// order (server key refund:{order_id}) — a retry returns the same refund.
 	Refund(context.Context, *RefundRequest) (*RefundResponse, error)
+	// GetPayment returns the order's payment snapshot (read-only). The caller is
+	// expected to have owner-scoped the order already — this internal surface
+	// carries no end-user identity (NetworkPolicy is the fence). NOT_FOUND when
+	// the order has no payment.
+	GetPayment(context.Context, *GetPaymentRequest) (*GetPaymentResponse, error)
 	mustEmbedUnimplementedPaymentServiceServer()
 }
 
@@ -152,6 +177,9 @@ func (UnimplementedPaymentServiceServer) Void(context.Context, *VoidRequest) (*V
 }
 func (UnimplementedPaymentServiceServer) Refund(context.Context, *RefundRequest) (*RefundResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Refund not implemented")
+}
+func (UnimplementedPaymentServiceServer) GetPayment(context.Context, *GetPaymentRequest) (*GetPaymentResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetPayment not implemented")
 }
 func (UnimplementedPaymentServiceServer) mustEmbedUnimplementedPaymentServiceServer() {}
 func (UnimplementedPaymentServiceServer) testEmbeddedByValue()                        {}
@@ -246,6 +274,24 @@ func _PaymentService_Refund_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PaymentService_GetPayment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetPaymentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PaymentServiceServer).GetPayment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PaymentService_GetPayment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PaymentServiceServer).GetPayment(ctx, req.(*GetPaymentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // PaymentService_ServiceDesc is the grpc.ServiceDesc for PaymentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -268,6 +314,10 @@ var PaymentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Refund",
 			Handler:    _PaymentService_Refund_Handler,
+		},
+		{
+			MethodName: "GetPayment",
+			Handler:    _PaymentService_GetPayment_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

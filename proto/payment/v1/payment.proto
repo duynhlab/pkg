@@ -7,7 +7,9 @@ option go_package = "github.com/duynhlab/pkg/proto/payment/v1;paymentv1";
 // PaymentService is the internal (east-west) contract the order-fulfillment saga
 // uses to move money: authorize a hold before reserving stock, capture it just
 // before confirming the order, and void/refund as compensations. Browser traffic
-// keeps using payment's REST surface; this gRPC surface is saga-only.
+// keeps using payment's REST surface; this gRPC surface is internal east-west
+// (the saga's money operations, plus the read the order service uses to enrich
+// order details with payment status).
 //
 // Every RPC is idempotent by the natural business key (order_id) — the saga needs
 // no client-generated key, and a Temporal activity retry re-drives safely:
@@ -31,6 +33,12 @@ service PaymentService {
   // Refund returns captured money (compensation once captured). Idempotent by the
   // order (server key refund:{order_id}) — a retry returns the same refund.
   rpc Refund(RefundRequest) returns (RefundResponse);
+
+  // GetPayment returns the order's payment snapshot (read-only). The caller is
+  // expected to have owner-scoped the order already — this internal surface
+  // carries no end-user identity (NetworkPolicy is the fence). NOT_FOUND when
+  // the order has no payment.
+  rpc GetPayment(GetPaymentRequest) returns (GetPaymentResponse);
 }
 
 message AuthorizeRequest {
@@ -53,6 +61,10 @@ message RefundRequest {
   int64 order_id = 1;
   int64 amount_minor = 2; // amount to refund in minor units
   string reason = 3;
+}
+
+message GetPaymentRequest {
+  int64 order_id = 1;
 }
 
 // Payment is the payment's post-operation snapshot, shared by the authorize/
@@ -91,4 +103,8 @@ message VoidResponse {
 
 message RefundResponse {
   Refund refund = 1;
+}
+
+message GetPaymentResponse {
+  Payment payment = 1;
 }
