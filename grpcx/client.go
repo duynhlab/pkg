@@ -69,7 +69,7 @@ func deadlineInterceptor(
 func Dial(target string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
 	base := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler(otelgrpc.WithFilter(telemetryFilter))),
 		grpc.WithDefaultServiceConfig(defaultServiceConfig),
 		grpc.WithChainUnaryInterceptor(deadlineInterceptor),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{

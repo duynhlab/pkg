@@ -74,7 +74,10 @@ func recoveryStream(
 // e.g. hs.SetServingStatus("", grpc_health_v1.HealthCheckResponse_NOT_SERVING).
 func NewServer(opts ...grpc.ServerOption) (*grpc.Server, *health.Server) {
 	base := []grpc.ServerOption{
-		grpc.StatsHandler(otelgrpc.NewServerHandler()),
+		// Health-check and reflection RPCs are pure plumbing: without a
+		// filter every probe/keepalive mints spans and duration series
+		// (steady telemetry noise). Real RPCs are unaffected.
+		grpc.StatsHandler(otelgrpc.NewServerHandler(otelgrpc.WithFilter(telemetryFilter))),
 		grpc.ChainUnaryInterceptor(recoveryUnary),
 		grpc.ChainStreamInterceptor(recoveryStream),
 		grpc.MaxConcurrentStreams(1000),

@@ -1,6 +1,7 @@
 package temporalx
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -20,4 +21,9 @@ func TestDial_WrapsConnectionError(t *testing.T) {
 			t.Errorf("error %q does not contain %q", err.Error(), want)
 		}
 	}
+}
+
+func TestLogMetricsError_DoesNotPanic(t *testing.T) {
+	// The SDK default OnError panics; ours must log and return.
+	logMetricsError(errors.New("instrument boom"))
 }
