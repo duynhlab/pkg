@@ -21,10 +21,15 @@ import (
 func TestConfigFromEnv_Defaults(t *testing.T) {
 	for _, k := range []string{"OTEL_SERVICE_NAME", "SERVICE_NAME", "SERVICE_VERSION",
 		"OTEL_COLLECTOR_ENDPOINT", "TRACING_ENABLED", "OTEL_SAMPLE_RATE",
-		"OTEL_METRICS_ENABLED", "OTEL_LOGS_ENABLED", "OTEL_METRIC_EXPORT_INTERVAL_SECONDS"} {
+		"OTEL_METRICS_ENABLED", "OTEL_LOGS_ENABLED", "OTEL_METRIC_EXPORT_INTERVAL_SECONDS",
+		"PROFILING_ENABLED"} {
 		t.Setenv(k, "")
 	}
 	cfg := ConfigFromEnv()
+
+	if !cfg.ProfilingEnabled {
+		t.Error("ProfilingEnabled should default to true (fleet config default)")
+	}
 
 	if cfg.ServiceName != "unknown-service" {
 		t.Errorf("ServiceName = %q, want unknown-service", cfg.ServiceName)
@@ -53,8 +58,12 @@ func TestConfigFromEnv_Overrides(t *testing.T) {
 	t.Setenv("TRACING_ENABLED", "false")
 	t.Setenv("OTEL_SAMPLE_RATE", "not-a-number") // invalid → default
 	t.Setenv("OTEL_METRIC_EXPORT_INTERVAL_SECONDS", "bogus")
+	t.Setenv("PROFILING_ENABLED", "false")
 
 	cfg := ConfigFromEnv()
+	if cfg.ProfilingEnabled {
+		t.Error("PROFILING_ENABLED=false must disable the profiling wrap")
+	}
 	if cfg.MetricsInterval != 15*time.Second {
 		t.Errorf("invalid interval must fall back to 15s, got %v", cfg.MetricsInterval)
 	}
@@ -116,7 +125,13 @@ func TestSetupObservability_MetricsViews(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dur.Record(ctx, 0.25)
+	// otelgin falls back to the client-supplied Host header for server.port
+	// when the configured service name is portless — the View must drop both
+	// keys or any caller can mint arbitrary series (cardinality DoS).
+	dur.Record(ctx, 0.25, metric.WithAttributes(
+		attribute.String("server.address", "evil-host"),
+		attribute.Int("server.port", 31337),
+		attribute.String("http.request.method", "GET")))
 
 	rpc, err := meter.Float64Histogram("rpc.client.call.duration")
 	if err != nil {
@@ -142,6 +157,16 @@ func TestSetupObservability_MetricsViews(t *testing.T) {
 				h, ok := m.Data.(metricdata.Histogram[float64])
 				if !ok {
 					t.Fatalf("duration data type %T", m.Data)
+				}
+				attrs := h.DataPoints[0].Attributes
+				if _, found := attrs.Value("server.address"); found {
+					t.Error("server.address must be dropped from http.server.request.duration (Host-header cardinality)")
+				}
+				if _, found := attrs.Value("server.port"); found {
+					t.Error("server.port must be dropped from http.server.request.duration")
+				}
+				if _, found := attrs.Value("http.request.method"); !found {
+					t.Error("http.request.method must survive the attribute filter")
 				}
 				got := h.DataPoints[0].Bounds
 				if len(got) != len(DurationBuckets) {
@@ -198,7 +223,7 @@ func TestSetupObservability_BodySizeViews(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		h.Record(ctx, 512)
+		h.Record(ctx, 512, metric.WithAttributes(attribute.String("server.address", "evil-host")))
 	}
 
 	var rm metricdata.ResourceMetrics
@@ -219,6 +244,9 @@ func TestSetupObservability_BodySizeViews(t *testing.T) {
 			got := h.DataPoints[0].Bounds
 			if len(got) != len(BodySizeBuckets) || got[0] != BodySizeBuckets[0] || got[len(got)-1] != BodySizeBuckets[len(got)-1] {
 				t.Fatalf("%s bounds = %v, want byte buckets %v", m.Name, got, BodySizeBuckets)
+			}
+			if _, found := h.DataPoints[0].Attributes.Value("server.address"); found {
+				t.Errorf("%s: server.address must be dropped by the View", m.Name)
 			}
 		}
 	}
@@ -263,6 +291,56 @@ func TestSetupObservability_TracesAndGlobals(t *testing.T) {
 	spans := exp.GetSpans()
 	if len(spans) != 1 {
 		t.Fatalf("exported %d spans, want 1", len(spans))
+	}
+}
+
+func TestSetupObservability_ProfilingWrapsGlobalTracer(t *testing.T) {
+	ctx := context.Background()
+	obs, err := SetupObservability(ctx,
+		Config{ServiceName: "t", TracesEnabled: true, SampleRate: 1, ProfilingEnabled: true},
+		withSpanExporter(tracetest.NewInMemoryExporter()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = obs.Shutdown(ctx) })
+
+	// The global must be the Pyroscope wrapper (trace→profile correlation),
+	// NOT the raw SDK provider — while Observability keeps the raw provider
+	// for Shutdown. TestSetupObservability_TracesAndGlobals covers the
+	// unwrapped branch (ProfilingEnabled=false → global == raw provider).
+	global := otel.GetTracerProvider()
+	if global == nil {
+		t.Fatal("no global TracerProvider installed")
+	}
+	if global == any(obs.TracerProvider) {
+		t.Error("ProfilingEnabled must install the profiling wrapper as the global, got the raw SDK provider")
+	}
+	if obs.TracerProvider == nil {
+		t.Error("Observability.TracerProvider must stay the raw SDK provider for Shutdown")
+	}
+	// Spans must still flow through the wrapper.
+	_, span := global.Tracer("t").Start(ctx, "op")
+	span.End()
+}
+
+func TestExportInterval_Clamps(t *testing.T) {
+	cases := []struct {
+		name string
+		in   time.Duration
+		want time.Duration
+	}{
+		{"in-window value passes through", 30 * time.Second, 30 * time.Second},
+		{"sub-second tight loop falls back", 100 * time.Millisecond, 15 * time.Second},
+		{"zero falls back", 0, 15 * time.Second},
+		{"negative (float overflow wrap) falls back", -time.Hour, 15 * time.Second},
+		{"multi-year (export effectively off) falls back", 24 * 365 * time.Hour, 15 * time.Second},
+		{"window edges are valid", time.Second, time.Second},
+		{"upper edge is valid", 5 * time.Minute, 5 * time.Minute},
+	}
+	for _, c := range cases {
+		if got := exportInterval(c.in); got != c.want {
+			t.Errorf("%s: exportInterval(%v) = %v, want %v", c.name, c.in, got, c.want)
+		}
 	}
 }
 
