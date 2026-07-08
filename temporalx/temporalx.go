@@ -10,6 +10,7 @@ package temporalx
 
 import (
 	"fmt"
+	"log/slog"
 
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/contrib/opentelemetry"
@@ -52,10 +53,14 @@ func Dial(cfg Config) (client.Client, error) {
 	}
 
 	c, err := client.Dial(client.Options{
-		HostPort:       cfg.HostPort,
-		Namespace:      cfg.Namespace,
-		Interceptors:   []interceptor.ClientInterceptor{tracing},
-		MetricsHandler: opentelemetry.NewMetricsHandler(opentelemetry.MetricsHandlerOptions{}),
+		HostPort:     cfg.HostPort,
+		Namespace:    cfg.Namespace,
+		Interceptors: []interceptor.ClientInterceptor{tracing},
+		// OnError must never keep the SDK default (panic): an instrument-
+		// creation error would crash the whole worker over telemetry.
+		MetricsHandler: opentelemetry.NewMetricsHandler(opentelemetry.MetricsHandlerOptions{
+			OnError: logMetricsError,
+		}),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("temporalx: dial %q (namespace %q): %w", cfg.HostPort, cfg.Namespace, err)
@@ -68,4 +73,10 @@ func Dial(cfg Config) (client.Client, error) {
 // block until interrupted. The worker inherits the client's tracing interceptor.
 func NewWorker(c client.Client, taskQueue string) worker.Worker {
 	return worker.New(c, taskQueue, worker.Options{})
+}
+
+// logMetricsError replaces the Temporal SDK's default OnError (panic): an
+// instrument-creation failure must never crash the worker over telemetry.
+func logMetricsError(err error) {
+	slog.Error("temporalx: metrics handler error", "error", err)
 }
