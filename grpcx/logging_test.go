@@ -2,13 +2,16 @@ package grpcx
 
 import (
 	"context"
+	"net"
 	"testing"
+	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 // obsLogger returns a zap logger backed by an in-memory observer so tests can
@@ -125,5 +128,70 @@ func TestIsInfraMethod(t *testing.T) {
 		if got := isInfraMethod(m); got != want {
 			t.Errorf("isInfraMethod(%q) = %v, want %v", m, got, want)
 		}
+	}
+}
+
+// panicDesc registers one unary method "/grpcx.test.Panic/Boom" whose handler
+// panics — it invokes the server's chained interceptor so recovery + access
+// log run exactly as in production.
+var panicDesc = grpc.ServiceDesc{
+	ServiceName: "grpcx.test.Panic",
+	HandlerType: (*any)(nil),
+	Methods: []grpc.MethodDesc{{
+		MethodName: "Boom",
+		Handler: func(_ any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+			if err := dec(&emptypb.Empty{}); err != nil {
+				return nil, err
+			}
+			impl := func(context.Context, any) (any, error) { panic("boom") }
+			info := &grpc.UnaryServerInfo{FullMethod: "/grpcx.test.Panic/Boom"}
+			if interceptor == nil {
+				return impl(ctx, nil)
+			}
+			return interceptor(ctx, &emptypb.Empty{}, info, impl)
+		},
+	}},
+	Metadata: "test",
+}
+
+// TestNewServer_LogsRecoveredPanicAsInternal is the regression guard for the
+// interceptor chain order: a panicking handler must surface as a single
+// code=Internal access-log entry at Error level (not vanish). Runs over the
+// wire through NewServer so it catches a re-inversion of the chain in
+// server.go, not just the interceptor in isolation.
+func TestNewServer_LogsRecoveredPanicAsInternal(t *testing.T) {
+	logger, logs := obsLogger()
+	srv, _ := NewServer(logger)
+	srv.RegisterService(&panicDesc, struct{}{})
+
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = srv.Serve(lis) }()
+	t.Cleanup(srv.Stop)
+
+	conn, err := Dial(lis.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err = conn.Invoke(ctx, "/grpcx.test.Panic/Boom", &emptypb.Empty{}, &emptypb.Empty{})
+	if status.Code(err) != codes.Internal {
+		t.Fatalf("recovered panic should surface as codes.Internal, got %v", status.Code(err))
+	}
+
+	entries := logs.FilterMessage("gRPC request").All()
+	if len(entries) != 1 {
+		t.Fatalf("want 1 access-log entry for the panicking RPC, got %d", len(entries))
+	}
+	if entries[0].Level != zap.ErrorLevel {
+		t.Errorf("level = %v, want Error", entries[0].Level)
+	}
+	if got := entries[0].ContextMap()["code"]; got != "Internal" {
+		t.Errorf("code = %v, want Internal", got)
 	}
 }

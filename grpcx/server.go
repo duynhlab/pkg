@@ -82,11 +82,14 @@ func NewServer(logger *zap.Logger, opts ...grpc.ServerOption) (*grpc.Server, *he
 		// filter every probe/keepalive mints spans and duration series
 		// (steady telemetry noise). Real RPCs are unaffected.
 		grpc.StatsHandler(otelgrpc.NewServerHandler(otelgrpc.WithFilter(telemetryFilter))),
-		// Recovery is outermost so a panic in the access-log or business
-		// handler still becomes codes.Internal; the access log then records
-		// that Internal result.
-		grpc.ChainUnaryInterceptor(recoveryUnary, accessLogUnary(logger)),
-		grpc.ChainStreamInterceptor(recoveryStream, accessLogStream(logger)),
+		// Access log OUTERMOST, recovery inner: grpc-go runs chained
+		// interceptors first-to-last as outer-to-inner, so a handler panic is
+		// caught by recoveryUnary (inner), turned into codes.Internal, and
+		// RETURNED up to accessLogUnary — which then records that Internal
+		// result. Reversing the order would unwind the panic straight past a
+		// not-yet-logged access interceptor, so panics would never be logged.
+		grpc.ChainUnaryInterceptor(accessLogUnary(logger), recoveryUnary),
+		grpc.ChainStreamInterceptor(accessLogStream(logger), recoveryStream),
 		grpc.MaxConcurrentStreams(1000),
 		grpc.MaxRecvMsgSize(4 << 20), // 4 MiB
 		grpc.KeepaliveParams(keepalive.ServerParameters{
