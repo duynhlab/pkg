@@ -34,6 +34,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap/zapcore"
 )
 
@@ -83,13 +84,20 @@ type Config struct {
 	// LogsEnabled builds the OTLP LoggerProvider; bridge it into zap with
 	// Observability.ZapCore.
 	LogsEnabled bool
+	// ProfilingEnabled wraps the global TracerProvider with the Pyroscope
+	// span-profile linker (TracerProviderWithProfiles) so trace→profile
+	// correlation needs no extra wiring in main(). Only used when
+	// TracesEnabled. Observability.TracerProvider stays the raw SDK provider
+	// either way (Shutdown needs it).
+	ProfilingEnabled bool
 }
 
 // ConfigFromEnv builds a Config from the platform's canonical env vars:
 // OTEL_SERVICE_NAME/SERVICE_NAME, SERVICE_VERSION, OTEL_COLLECTOR_ENDPOINT,
 // TRACING_ENABLED (default true), OTEL_SAMPLE_RATE (default 0.1),
 // OTEL_METRICS_ENABLED and OTEL_LOGS_ENABLED (default false — RFC-0014
-// rollout flags), OTEL_METRIC_EXPORT_INTERVAL_SECONDS (default 15).
+// rollout flags), OTEL_METRIC_EXPORT_INTERVAL_SECONDS (default 15),
+// PROFILING_ENABLED (default true, matching the fleet's config default).
 func ConfigFromEnv() Config {
 	name := os.Getenv("OTEL_SERVICE_NAME")
 	if name == "" {
@@ -103,14 +111,15 @@ func ConfigFromEnv() Config {
 		endpoint = "otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4318"
 	}
 	return Config{
-		ServiceName:     name,
-		ServiceVersion:  os.Getenv("SERVICE_VERSION"),
-		Endpoint:        endpoint,
-		TracesEnabled:   envBool("TRACING_ENABLED", true),
-		SampleRate:      envFloat("OTEL_SAMPLE_RATE", 0.1),
-		MetricsEnabled:  envBool("OTEL_METRICS_ENABLED", false),
-		MetricsInterval: time.Duration(envFloat("OTEL_METRIC_EXPORT_INTERVAL_SECONDS", 15)) * time.Second,
-		LogsEnabled:     envBool("OTEL_LOGS_ENABLED", false),
+		ServiceName:      name,
+		ServiceVersion:   os.Getenv("SERVICE_VERSION"),
+		Endpoint:         endpoint,
+		TracesEnabled:    envBool("TRACING_ENABLED", true),
+		SampleRate:       envFloat("OTEL_SAMPLE_RATE", 0.1),
+		MetricsEnabled:   envBool("OTEL_METRICS_ENABLED", false),
+		MetricsInterval:  time.Duration(envFloat("OTEL_METRIC_EXPORT_INTERVAL_SECONDS", 15)) * time.Second,
+		LogsEnabled:      envBool("OTEL_LOGS_ENABLED", false),
+		ProfilingEnabled: envBool("PROFILING_ENABLED", true),
 	}
 }
 
@@ -189,10 +198,6 @@ func SetupObservability(ctx context.Context, cfg Config, opts ...setupOption) (*
 			sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(rate))),
 			sdktrace.WithBatcher(exp),
 		)
-		otel.SetTracerProvider(tp)
-		otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
-			propagation.TraceContext{}, propagation.Baggage{},
-		))
 		obs.TracerProvider = tp
 		obs.shutdowns = append(obs.shutdowns, tp.Shutdown)
 	}
@@ -208,18 +213,13 @@ func SetupObservability(ctx context.Context, cfg Config, opts ...setupOption) (*
 			if err != nil {
 				return nil, errors.Join(fmt.Errorf("obsx: build metric exporter: %w", err), obs.Shutdown(ctx))
 			}
-			interval := cfg.MetricsInterval
-			if interval < time.Second {
-				interval = 15 * time.Second
-			}
-			reader = sdkmetric.NewPeriodicReader(exp, sdkmetric.WithInterval(interval))
+			reader = sdkmetric.NewPeriodicReader(exp, sdkmetric.WithInterval(exportInterval(cfg.MetricsInterval)))
 		}
 		mp := sdkmetric.NewMeterProvider(
 			sdkmetric.WithResource(res),
 			sdkmetric.WithReader(reader),
 			sdkmetric.WithView(metricViews()...),
 		)
-		otel.SetMeterProvider(mp)
 		if err := runtime.Start(runtime.WithMeterProvider(mp)); err != nil {
 			return nil, errors.Join(fmt.Errorf("obsx: start runtime instrumentation: %w", err), mp.Shutdown(ctx), obs.Shutdown(ctx))
 		}
@@ -244,12 +244,44 @@ func SetupObservability(ctx context.Context, cfg Config, opts ...setupOption) (*
 			sdklog.WithResource(res),
 			sdklog.WithProcessor(sdklog.NewBatchProcessor(exp)),
 		)
-		global.SetLoggerProvider(lp)
 		obs.LoggerProvider = lp
 		obs.shutdowns = append(obs.shutdowns, lp.Shutdown)
 	}
 
+	// Every enabled signal built — only now touch process-wide state. A
+	// partial failure above therefore never leaves an already-shut-down
+	// provider installed as a global (which would silently drop every span
+	// for the process lifetime while the service keeps serving).
+	if obs.TracerProvider != nil {
+		var tp trace.TracerProvider = obs.TracerProvider
+		if cfg.ProfilingEnabled {
+			tp = TracerProviderWithProfiles(tp)
+		}
+		otel.SetTracerProvider(tp)
+		otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+			propagation.TraceContext{}, propagation.Baggage{},
+		))
+	}
+	if obs.MeterProvider != nil {
+		otel.SetMeterProvider(obs.MeterProvider)
+	}
+	if obs.LoggerProvider != nil {
+		global.SetLoggerProvider(obs.LoggerProvider)
+	}
+
 	return obs, nil
+}
+
+// exportInterval clamps the PeriodicReader interval to a sane operational
+// window. Below 1s a misconfigured env turns the exporter into a tight loop;
+// above 5m export is effectively disabled (and float-parsed garbage from
+// OTEL_METRIC_EXPORT_INTERVAL_SECONDS can overflow to multi-year or negative
+// durations). Outside the window the platform default (15s, D-7) applies.
+func exportInterval(d time.Duration) time.Duration {
+	if d < time.Second || d > 5*time.Minute {
+		return 15 * time.Second
+	}
+	return d
 }
 
 // ZapCore returns a zapcore.Core that bridges zap records into the OTLP log
@@ -331,26 +363,40 @@ func buildResource(ctx context.Context, cfg Config) *resource.Resource {
 }
 
 // metricViews returns the platform's mandatory metric Views (RFC-0014):
-// SLO-preserving buckets for the semconv HTTP histograms and the pod-IP
-// cardinality guard on gRPC client metrics (server.address/server.port are
-// per-pod under headless DNS — a full series churn every rollout).
+// SLO-preserving buckets for the semconv HTTP histograms and the
+// server.address/server.port cardinality guard on BOTH metric families that
+// carry them. On rpc.client they are per-pod IPs under headless DNS (full
+// series churn every rollout); on the http.server instruments otelgin derives
+// the port from the client-supplied Host header when the service name has no
+// port, so any caller can mint arbitrary label values (cardinality DoS).
+// semconv marks them opt-in for HTTP server metrics for exactly this reason.
 func metricViews() []sdkmetric.View {
+	denyServerAddr := attribute.NewDenyKeysFilter("server.address", "server.port")
 	return []sdkmetric.View{
 		sdkmetric.NewView(
 			sdkmetric.Instrument{Name: "http.server.request.duration"},
-			sdkmetric.Stream{Aggregation: sdkmetric.AggregationExplicitBucketHistogram{Boundaries: DurationBuckets}},
+			sdkmetric.Stream{
+				Aggregation:     sdkmetric.AggregationExplicitBucketHistogram{Boundaries: DurationBuckets},
+				AttributeFilter: denyServerAddr,
+			},
 		),
 		sdkmetric.NewView(
 			sdkmetric.Instrument{Name: "http.server.request.body.size"},
-			sdkmetric.Stream{Aggregation: sdkmetric.AggregationExplicitBucketHistogram{Boundaries: BodySizeBuckets}},
+			sdkmetric.Stream{
+				Aggregation:     sdkmetric.AggregationExplicitBucketHistogram{Boundaries: BodySizeBuckets},
+				AttributeFilter: denyServerAddr,
+			},
 		),
 		sdkmetric.NewView(
 			sdkmetric.Instrument{Name: "http.server.response.body.size"},
-			sdkmetric.Stream{Aggregation: sdkmetric.AggregationExplicitBucketHistogram{Boundaries: BodySizeBuckets}},
+			sdkmetric.Stream{
+				Aggregation:     sdkmetric.AggregationExplicitBucketHistogram{Boundaries: BodySizeBuckets},
+				AttributeFilter: denyServerAddr,
+			},
 		),
 		sdkmetric.NewView(
 			sdkmetric.Instrument{Name: "rpc.client.call.duration"},
-			sdkmetric.Stream{AttributeFilter: attribute.NewDenyKeysFilter("server.address", "server.port")},
+			sdkmetric.Stream{AttributeFilter: denyServerAddr},
 		),
 	}
 }
