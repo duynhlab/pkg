@@ -76,6 +76,15 @@ func accessLogStream(logger *zap.Logger) grpc.StreamServerInterceptor {
 
 // logRPC emits the shared access-log line. Kept separate so the unary and
 // stream interceptors stay in lockstep on fields and level policy.
+//
+// Field naming vs the HTTP access log (product-service middleware): trace_id,
+// method and duration match exactly, so a "give me everything for trace_id=X"
+// query spans both protocols. The outcome and caller fields DELIBERATELY
+// differ — gRPC uses code/peer, HTTP uses status/client_ip — because a gRPC
+// status code is a distinct enum (OK/NotFound/Internal…), not an HTTP status
+// int; reusing "status" would make that VictoriaLogs field mixed-type. peer is
+// the in-cluster calling pod, not the edge client behind Kong. Cross-protocol
+// outcome filtering therefore keys on trace_id, not a shared status field.
 func logRPC(ctx context.Context, logger *zap.Logger, method string, err error, d time.Duration) {
 	code := status.Code(err)
 	level := zapcore.InfoLevel
