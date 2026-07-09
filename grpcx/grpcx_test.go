@@ -12,7 +12,7 @@ import (
 )
 
 func TestNewServer_HealthAndReflection(t *testing.T) {
-	srv, hs := NewServer()
+	srv, hs := NewServer(nil)
 	t.Cleanup(srv.Stop)
 
 	if srv == nil {
@@ -88,7 +88,7 @@ func hasReflection(srv *grpc.Server) bool {
 
 func TestNewServer_ReflectionGating(t *testing.T) {
 	// Default: reflection registered.
-	def, _ := NewServer()
+	def, _ := NewServer(nil)
 	t.Cleanup(def.Stop)
 	if !hasReflection(def) {
 		t.Error("reflection should be registered by default")
@@ -96,7 +96,7 @@ func TestNewServer_ReflectionGating(t *testing.T) {
 
 	// GRPC_REFLECTION=false: reflection omitted.
 	t.Setenv("GRPC_REFLECTION", "false")
-	off, _ := NewServer()
+	off, _ := NewServer(nil)
 	t.Cleanup(off.Stop)
 	if hasReflection(off) {
 		t.Error("reflection must be omitted when GRPC_REFLECTION=false")

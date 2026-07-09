@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
@@ -61,6 +62,7 @@ func recoveryStream(
 
 // NewServer returns a *grpc.Server preconfigured for internal services:
 //   - OpenTelemetry tracing/metrics via the otelgrpc stats handler,
+//   - a per-RPC access log (the gRPC counterpart of the HTTP request log),
 //   - panic recovery (a handler panic becomes codes.Internal, not a crash),
 //   - keepalive (MaxConnectionAge forces periodic reconnect so clients
 //     re-resolve and rebalance after a scale/rolling deploy) and an enforcement
@@ -69,17 +71,22 @@ func recoveryStream(
 //   - the standard gRPC health service (reporting SERVING by default), and
 //   - server reflection unless GRPC_REFLECTION=false (gate it off in prod).
 //
-// Additional ServerOptions are appended after the defaults. The returned
-// *health.Server lets callers flip serving status during startup/shutdown,
-// e.g. hs.SetServingStatus("", grpc_health_v1.HealthCheckResponse_NOT_SERVING).
-func NewServer(opts ...grpc.ServerOption) (*grpc.Server, *health.Server) {
+// logger is the service's zap logger (pass the OTLP-teed one so access logs
+// reach VictoriaLogs); a nil logger disables the access log. Additional
+// ServerOptions are appended after the defaults. The returned *health.Server
+// lets callers flip serving status during startup/shutdown, e.g.
+// hs.SetServingStatus("", grpc_health_v1.HealthCheckResponse_NOT_SERVING).
+func NewServer(logger *zap.Logger, opts ...grpc.ServerOption) (*grpc.Server, *health.Server) {
 	base := []grpc.ServerOption{
 		// Health-check and reflection RPCs are pure plumbing: without a
 		// filter every probe/keepalive mints spans and duration series
 		// (steady telemetry noise). Real RPCs are unaffected.
 		grpc.StatsHandler(otelgrpc.NewServerHandler(otelgrpc.WithFilter(telemetryFilter))),
-		grpc.ChainUnaryInterceptor(recoveryUnary),
-		grpc.ChainStreamInterceptor(recoveryStream),
+		// Recovery is outermost so a panic in the access-log or business
+		// handler still becomes codes.Internal; the access log then records
+		// that Internal result.
+		grpc.ChainUnaryInterceptor(recoveryUnary, accessLogUnary(logger)),
+		grpc.ChainStreamInterceptor(recoveryStream, accessLogStream(logger)),
 		grpc.MaxConcurrentStreams(1000),
 		grpc.MaxRecvMsgSize(4 << 20), // 4 MiB
 		grpc.KeepaliveParams(keepalive.ServerParameters{

@@ -44,7 +44,7 @@ func TestTelemetryFilter_HealthProducesNoSpans(t *testing.T) {
 	otel.SetTracerProvider(tp)
 	t.Cleanup(func() { otel.SetTracerProvider(prev) })
 
-	srv, _ := NewServer()
+	srv, _ := NewServer(nil)
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
