@@ -4,12 +4,10 @@
 // semconv-shaped via Views) and logs (OTLP via the otelzap bridge) — and
 // returns one Shutdown for all of them.
 //
-// Metrics and logs are opt-in (Config.MetricsEnabled / LogsEnabled, wired to
-// OTEL_METRICS_ENABLED / OTEL_LOGS_ENABLED by ConfigFromEnv) so services can
-// dual-emit behind env flags during the RFC-0014 rollout. When MetricsEnabled
-// is set, the global MeterProvider becomes the OTLP one and supersedes the
-// Prometheus bridge installed by SetupMetrics: otelgrpc and Temporal SDK
-// metrics then flow over OTLP instead of the scraped /metrics endpoint.
+// Since the RFC-0014 P3 cutover OTLP metrics are the only pipeline:
+// MetricsEnabled defaults to TRUE (OTEL_METRICS_ENABLED=false remains an
+// explicit kill switch); logs stay opt-in behind OTEL_LOGS_ENABLED for the
+// P4 wave. The scrape-era Prometheus bridge (SetupMetrics) is gone.
 package obsx
 
 import (
@@ -74,7 +72,8 @@ type Config struct {
 	// TracesEnabled.
 	SampleRate float64
 	// MetricsEnabled builds the OTLP MeterProvider (PeriodicReader +
-	// semconv Views) and starts the Go runtime instrumentation.
+	// semconv Views) and starts the Go runtime instrumentation. Default
+	// true since the P3 cutover — OTLP is the only metrics pipeline.
 	MetricsEnabled bool
 	// MetricsInterval is the PeriodicReader export interval. The default
 	// (15s) deliberately matches the platform's historical scrape interval
@@ -95,8 +94,9 @@ type Config struct {
 // ConfigFromEnv builds a Config from the platform's canonical env vars:
 // OTEL_SERVICE_NAME/SERVICE_NAME, SERVICE_VERSION, OTEL_COLLECTOR_ENDPOINT,
 // TRACING_ENABLED (default true), OTEL_SAMPLE_RATE (default 0.1),
-// OTEL_METRICS_ENABLED and OTEL_LOGS_ENABLED (default false — RFC-0014
-// rollout flags), OTEL_METRIC_EXPORT_INTERVAL_SECONDS (default 15),
+// OTEL_METRICS_ENABLED (default true since the P3 cutover — set false only
+// as a kill switch), OTEL_LOGS_ENABLED (default false — P4 rollout flag),
+// OTEL_METRIC_EXPORT_INTERVAL_SECONDS (default 15),
 // PROFILING_ENABLED (default true, matching the fleet's config default).
 func ConfigFromEnv() Config {
 	name := os.Getenv("OTEL_SERVICE_NAME")
@@ -116,7 +116,7 @@ func ConfigFromEnv() Config {
 		Endpoint:         endpoint,
 		TracesEnabled:    envBool("TRACING_ENABLED", true),
 		SampleRate:       envFloat("OTEL_SAMPLE_RATE", 0.1),
-		MetricsEnabled:   envBool("OTEL_METRICS_ENABLED", false),
+		MetricsEnabled:   envBool("OTEL_METRICS_ENABLED", true),
 		MetricsInterval:  time.Duration(envFloat("OTEL_METRIC_EXPORT_INTERVAL_SECONDS", 15)) * time.Second,
 		LogsEnabled:      envBool("OTEL_LOGS_ENABLED", false),
 		ProfilingEnabled: envBool("PROFILING_ENABLED", true),

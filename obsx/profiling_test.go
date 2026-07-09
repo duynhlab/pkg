@@ -139,7 +139,7 @@ func TestShutdownProfiling_NoProfiler(t *testing.T) {
 }
 
 // TestSetupProfiling exercises the full start path and the returned shutdown
-// func (the non-nil profiler branch). It mirrors TestSetupMetricsIdempotent.
+// func (the non-nil profiler branch).
 func TestSetupProfiling(t *testing.T) {
 	t.Setenv("OTEL_SERVICE_NAME", "auth-service")
 	t.Setenv("OTEL_RESOURCE_ATTRIBUTES", "service.namespace=identity,service.version=v1.0.0")

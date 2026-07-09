@@ -37,8 +37,11 @@ func TestConfigFromEnv_Defaults(t *testing.T) {
 	if !cfg.TracesEnabled {
 		t.Error("TracesEnabled should default to true")
 	}
-	if cfg.MetricsEnabled || cfg.LogsEnabled {
-		t.Error("metrics/logs must default to DISABLED (RFC-0014 rollout flags)")
+	if !cfg.MetricsEnabled {
+		t.Error("metrics must default to ENABLED (OTLP is the only pipeline since the P3 cutover)")
+	}
+	if cfg.LogsEnabled {
+		t.Error("logs must default to DISABLED (P4 rollout flag)")
 	}
 	if cfg.SampleRate != 0.1 {
 		t.Errorf("SampleRate = %v, want 0.1", cfg.SampleRate)
@@ -53,7 +56,7 @@ func TestConfigFromEnv_Defaults(t *testing.T) {
 
 func TestConfigFromEnv_Overrides(t *testing.T) {
 	t.Setenv("SERVICE_NAME", "order")
-	t.Setenv("OTEL_METRICS_ENABLED", "true")
+	t.Setenv("OTEL_METRICS_ENABLED", "false") // explicit kill switch
 	t.Setenv("OTEL_LOGS_ENABLED", "true")
 	t.Setenv("TRACING_ENABLED", "false")
 	t.Setenv("OTEL_SAMPLE_RATE", "not-a-number") // invalid → default
@@ -70,8 +73,8 @@ func TestConfigFromEnv_Overrides(t *testing.T) {
 	if cfg.ServiceName != "order" {
 		t.Errorf("ServiceName = %q, want order", cfg.ServiceName)
 	}
-	if !cfg.MetricsEnabled || !cfg.LogsEnabled || cfg.TracesEnabled {
-		t.Errorf("flag parsing wrong: %+v", cfg)
+	if cfg.MetricsEnabled || !cfg.LogsEnabled || cfg.TracesEnabled {
+		t.Errorf("flag parsing wrong (metrics kill switch / logs on / traces off): %+v", cfg)
 	}
 	if cfg.SampleRate != 0.1 {
 		t.Errorf("invalid OTEL_SAMPLE_RATE must fall back to 0.1, got %v", cfg.SampleRate)
