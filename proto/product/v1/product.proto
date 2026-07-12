@@ -20,6 +20,11 @@ service ProductService {
   // ReserveStock). Idempotent by reservation_id: releasing an unknown or
   // already-released reservation succeeds, so compensation is safe to retry.
   rpc ReleaseStock(ReleaseStockRequest) returns (ReleaseStockResponse);
+
+  // GetProducts is a batch price/availability read used by checkout
+  // re-validation (RFC-0015): product is the price authority at checkout
+  // time. Read-only; the response omits unknown ids rather than erroring.
+  rpc GetProducts(GetProductsRequest) returns (GetProductsResponse);
 }
 
 // StockItem is a single product/quantity pair within a reservation.
@@ -43,3 +48,27 @@ message ReleaseStockRequest {
 }
 
 message ReleaseStockResponse {}
+
+// --- RFC-0015 additions: checkout re-validation reads ---
+
+// GetProductsRequest asks for a batch of products by id.
+message GetProductsRequest {
+  repeated string product_ids = 1;
+}
+
+// ProductInfo is the price/availability view checkout validates against.
+message ProductInfo {
+  string product_id = 1;
+  string name = 2;
+  // price_minor is the current catalog unit price in int64 minor units — the
+  // platform money representation (RFC-0010 P3). The catalog's float price is
+  // rounded to cents at this boundary, once, by the product server.
+  int64 price_minor = 3;
+  int32 available_qty = 4;
+}
+
+// GetProductsResponse contains only the requested ids that exist; callers
+// treat a missing id as "product gone" and fail their validation.
+message GetProductsResponse {
+  repeated ProductInfo products = 1;
+}

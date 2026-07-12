@@ -252,6 +252,169 @@ func (*ReleaseStockResponse) Descriptor() ([]byte, []int) {
 	return file_product_v1_product_proto_rawDescGZIP(), []int{4}
 }
 
+// GetProductsRequest asks for a batch of products by id.
+type GetProductsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ProductIds    []string               `protobuf:"bytes,1,rep,name=product_ids,json=productIds,proto3" json:"product_ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetProductsRequest) Reset() {
+	*x = GetProductsRequest{}
+	mi := &file_product_v1_product_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetProductsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetProductsRequest) ProtoMessage() {}
+
+func (x *GetProductsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_product_v1_product_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetProductsRequest.ProtoReflect.Descriptor instead.
+func (*GetProductsRequest) Descriptor() ([]byte, []int) {
+	return file_product_v1_product_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *GetProductsRequest) GetProductIds() []string {
+	if x != nil {
+		return x.ProductIds
+	}
+	return nil
+}
+
+// ProductInfo is the price/availability view checkout validates against.
+type ProductInfo struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	ProductId string                 `protobuf:"bytes,1,opt,name=product_id,json=productId,proto3" json:"product_id,omitempty"`
+	Name      string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// price_minor is the current catalog unit price in int64 minor units — the
+	// platform money representation (RFC-0010 P3). The catalog's float price is
+	// rounded to cents at this boundary, once, by the product server.
+	PriceMinor    int64 `protobuf:"varint,3,opt,name=price_minor,json=priceMinor,proto3" json:"price_minor,omitempty"`
+	AvailableQty  int32 `protobuf:"varint,4,opt,name=available_qty,json=availableQty,proto3" json:"available_qty,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProductInfo) Reset() {
+	*x = ProductInfo{}
+	mi := &file_product_v1_product_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProductInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProductInfo) ProtoMessage() {}
+
+func (x *ProductInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_product_v1_product_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProductInfo.ProtoReflect.Descriptor instead.
+func (*ProductInfo) Descriptor() ([]byte, []int) {
+	return file_product_v1_product_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ProductInfo) GetProductId() string {
+	if x != nil {
+		return x.ProductId
+	}
+	return ""
+}
+
+func (x *ProductInfo) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ProductInfo) GetPriceMinor() int64 {
+	if x != nil {
+		return x.PriceMinor
+	}
+	return 0
+}
+
+func (x *ProductInfo) GetAvailableQty() int32 {
+	if x != nil {
+		return x.AvailableQty
+	}
+	return 0
+}
+
+// GetProductsResponse contains only the requested ids that exist; callers
+// treat a missing id as "product gone" and fail their validation.
+type GetProductsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Products      []*ProductInfo         `protobuf:"bytes,1,rep,name=products,proto3" json:"products,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetProductsResponse) Reset() {
+	*x = GetProductsResponse{}
+	mi := &file_product_v1_product_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetProductsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetProductsResponse) ProtoMessage() {}
+
+func (x *GetProductsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_product_v1_product_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetProductsResponse.ProtoReflect.Descriptor instead.
+func (*GetProductsResponse) Descriptor() ([]byte, []int) {
+	return file_product_v1_product_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *GetProductsResponse) GetProducts() []*ProductInfo {
+	if x != nil {
+		return x.Products
+	}
+	return nil
+}
+
 var File_product_v1_product_proto protoreflect.FileDescriptor
 
 const file_product_v1_product_proto_rawDesc = "" +
@@ -269,10 +432,23 @@ const file_product_v1_product_proto_rawDesc = "" +
 	"\x13ReleaseStockRequest\x12%\n" +
 	"\x0ereservation_id\x18\x01 \x01(\tR\rreservationId\x12+\n" +
 	"\x05items\x18\x02 \x03(\v2\x15.product.v1.StockItemR\x05items\"\x16\n" +
-	"\x14ReleaseStockResponse2\xb6\x01\n" +
+	"\x14ReleaseStockResponse\"5\n" +
+	"\x12GetProductsRequest\x12\x1f\n" +
+	"\vproduct_ids\x18\x01 \x03(\tR\n" +
+	"productIds\"\x86\x01\n" +
+	"\vProductInfo\x12\x1d\n" +
+	"\n" +
+	"product_id\x18\x01 \x01(\tR\tproductId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1f\n" +
+	"\vprice_minor\x18\x03 \x01(\x03R\n" +
+	"priceMinor\x12#\n" +
+	"\ravailable_qty\x18\x04 \x01(\x05R\favailableQty\"J\n" +
+	"\x13GetProductsResponse\x123\n" +
+	"\bproducts\x18\x01 \x03(\v2\x17.product.v1.ProductInfoR\bproducts2\x86\x02\n" +
 	"\x0eProductService\x12Q\n" +
 	"\fReserveStock\x12\x1f.product.v1.ReserveStockRequest\x1a .product.v1.ReserveStockResponse\x12Q\n" +
-	"\fReleaseStock\x12\x1f.product.v1.ReleaseStockRequest\x1a .product.v1.ReleaseStockResponseB\x9b\x01\n" +
+	"\fReleaseStock\x12\x1f.product.v1.ReleaseStockRequest\x1a .product.v1.ReleaseStockResponse\x12N\n" +
+	"\vGetProducts\x12\x1e.product.v1.GetProductsRequest\x1a\x1f.product.v1.GetProductsResponseB\x9b\x01\n" +
 	"\x0ecom.product.v1B\fProductProtoP\x01Z2github.com/duynhlab/pkg/proto/product/v1;productv1\xa2\x02\x03PXX\xaa\x02\n" +
 	"Product.V1\xca\x02\n" +
 	"Product\\V1\xe2\x02\x16Product\\V1\\GPBMetadata\xea\x02\vProduct::V1b\x06proto3"
@@ -289,26 +465,32 @@ func file_product_v1_product_proto_rawDescGZIP() []byte {
 	return file_product_v1_product_proto_rawDescData
 }
 
-var file_product_v1_product_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_product_v1_product_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_product_v1_product_proto_goTypes = []any{
 	(*StockItem)(nil),            // 0: product.v1.StockItem
 	(*ReserveStockRequest)(nil),  // 1: product.v1.ReserveStockRequest
 	(*ReserveStockResponse)(nil), // 2: product.v1.ReserveStockResponse
 	(*ReleaseStockRequest)(nil),  // 3: product.v1.ReleaseStockRequest
 	(*ReleaseStockResponse)(nil), // 4: product.v1.ReleaseStockResponse
+	(*GetProductsRequest)(nil),   // 5: product.v1.GetProductsRequest
+	(*ProductInfo)(nil),          // 6: product.v1.ProductInfo
+	(*GetProductsResponse)(nil),  // 7: product.v1.GetProductsResponse
 }
 var file_product_v1_product_proto_depIdxs = []int32{
 	0, // 0: product.v1.ReserveStockRequest.items:type_name -> product.v1.StockItem
 	0, // 1: product.v1.ReleaseStockRequest.items:type_name -> product.v1.StockItem
-	1, // 2: product.v1.ProductService.ReserveStock:input_type -> product.v1.ReserveStockRequest
-	3, // 3: product.v1.ProductService.ReleaseStock:input_type -> product.v1.ReleaseStockRequest
-	2, // 4: product.v1.ProductService.ReserveStock:output_type -> product.v1.ReserveStockResponse
-	4, // 5: product.v1.ProductService.ReleaseStock:output_type -> product.v1.ReleaseStockResponse
-	4, // [4:6] is the sub-list for method output_type
-	2, // [2:4] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	6, // 2: product.v1.GetProductsResponse.products:type_name -> product.v1.ProductInfo
+	1, // 3: product.v1.ProductService.ReserveStock:input_type -> product.v1.ReserveStockRequest
+	3, // 4: product.v1.ProductService.ReleaseStock:input_type -> product.v1.ReleaseStockRequest
+	5, // 5: product.v1.ProductService.GetProducts:input_type -> product.v1.GetProductsRequest
+	2, // 6: product.v1.ProductService.ReserveStock:output_type -> product.v1.ReserveStockResponse
+	4, // 7: product.v1.ProductService.ReleaseStock:output_type -> product.v1.ReleaseStockResponse
+	7, // 8: product.v1.ProductService.GetProducts:output_type -> product.v1.GetProductsResponse
+	6, // [6:9] is the sub-list for method output_type
+	3, // [3:6] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_product_v1_product_proto_init() }
@@ -322,7 +504,7 @@ func file_product_v1_product_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_product_v1_product_proto_rawDesc), len(file_product_v1_product_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -29,6 +29,18 @@ const (
 	CodePaymentExists          = "PAYMENT_EXISTS"           // 409: order already has a payment
 	CodeRefundExceedsCapture   = "REFUND_EXCEEDS_CAPTURE"   // 409: refunds would exceed captured amount
 	CodePaymentDeclined        = "PAYMENT_DECLINED"         // 422: provider declined the charge
+
+	// Checkout codes (RFC-0015). SESSION_EXPIRED rides HTTP 410 — the session
+	// existed but its TTL elapsed (lazy-expiry check), which is distinct from
+	// 404 (never existed / not yours). PRICE_CHANGED and STOCK_UNAVAILABLE are
+	// 409s raised by confirm-time re-validation; the promo trio covers apply-
+	// and confirm-time promo failures.
+	CodeSessionExpired   = "SESSION_EXPIRED"   // 410: checkout session TTL elapsed
+	CodePriceChanged     = "PRICE_CHANGED"     // 409: catalog price differs from the session snapshot
+	CodeStockUnavailable = "STOCK_UNAVAILABLE" // 409: requested quantity no longer available
+	CodePromoInvalid     = "PROMO_INVALID"     // 400: unknown or malformed promo code
+	CodePromoExpired     = "PROMO_EXPIRED"     // 409: promo code past its expiry
+	CodePromoExhausted   = "PROMO_EXHAUSTED"   // 409: redemption cap (global or per-user) reached
 )
 
 // RespondError writes the standard error envelope:
