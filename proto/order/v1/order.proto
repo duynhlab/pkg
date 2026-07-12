@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package order.v1;
+
+option go_package = "github.com/duynhlab/pkg/proto/order/v1;orderv1";
+
+// OrderService is the internal (east-west) contract for the order service —
+// its first inbound gRPC surface, introduced by RFC-0015 P2 (homelab ADR-018).
+//
+// Boundary invariant: order-service remains the ONLY writer of orders and the
+// only starter of the OrderFulfillmentWorkflow saga. CreateOrder reaches the
+// exact same insert-pending + StartWorkflow path the browser REST endpoint
+// uses; it does NOT re-read the caller's cart — the only caller (checkout)
+// has already re-validated items and prices against product-service, a
+// strictly stronger check than cart's denormalized prices.
+service OrderService {
+  // CreateOrder inserts a pending order and starts the fulfillment saga.
+  // Idempotent by (user_id, idempotency_key): replaying a key returns the
+  // existing order and does NOT start a second saga (a partial unique index
+  // and the saga's workflow-id dedup back this up).
+  rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
+}
+
+// OrderItem is one validated line of the order being placed. Prices are
+// int64 minor units (the platform money representation) — the caller locks
+// them from product-service at confirm time.
+message OrderItem {
+  string product_id = 1;
+  string product_name = 2;
+  int32 quantity = 3;
+  int64 unit_price_minor = 4;
+}
+
+message CreateOrderRequest {
+  // user_id is the order owner. gRPC carries no user JWT east-west: identity
+  // crosses as an explicit field and NetworkPolicy is the fence — the same
+  // accepted posture as ReserveStock/CreateShipment/GetCart.
+  string user_id = 1;
+  repeated OrderItem items = 2;
+  // payment_method is an opaque provider token (tok_…), never card data —
+  // the same shape the REST endpoint accepts. Optional; empty selects the
+  // demo token downstream.
+  string payment_method = 3;
+  // idempotency_key is REQUIRED (unlike the REST endpoint's optional
+  // header): the internal caller is a machine and must always send a
+  // deterministic key. The server rejects an empty key with
+  // INVALID_ARGUMENT.
+  string idempotency_key = 4;
+}
+
+message CreateOrderResponse {
+  string order_id = 1;
+  // status is the order's state after creation — "pending" on a fresh
+  // insert, or the current state of the replayed order.
+  string status = 2;
+}
