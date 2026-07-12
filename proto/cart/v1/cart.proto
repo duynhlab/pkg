@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package cart.v1;
+
+option go_package = "github.com/duynhlab/pkg/proto/cart/v1;cartv1";
+
+// CartService is the internal (east-west) read contract for the cart service.
+// Introduced by RFC-0015: checkout snapshots the user's cart at session
+// creation. Read-only by design — cart's write path stays on its browser REST
+// API and the saga's internal ClearCart route (see homelab ADR-021 for the
+// criteria that would move writes here).
+service CartService {
+  // GetCart returns the user's current cart items. An unknown user or an
+  // empty cart yields an empty list, not an error — emptiness is a business
+  // condition the caller decides on (checkout answers 409).
+  rpc GetCart(GetCartRequest) returns (GetCartResponse);
+}
+
+message GetCartRequest {
+  // user_id is the cart owner. gRPC carries no user JWT east-west: identity
+  // crosses as an explicit field and NetworkPolicy is the fence — the same
+  // accepted posture as ReserveStock/CreateShipment.
+  string user_id = 1;
+}
+
+// CartItem is one cart line. cart is the item-list authority (which products,
+// what quantities); it is deliberately NOT the price authority.
+message CartItem {
+  string product_id = 1;
+  string product_name = 2;
+  int32 quantity = 3;
+  // cart_price_minor is cart's denormalized unit price in int64 minor units,
+  // captured at add-to-cart time. Checkout compares it against product's
+  // authoritative price to flag price-changed lines; it is never the price
+  // charged (RFC-0015, homelab ADR-020).
+  int64 cart_price_minor = 4;
+}
+
+message GetCartResponse {
+  repeated CartItem items = 1;
+}
