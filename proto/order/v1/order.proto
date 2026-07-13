@@ -46,6 +46,13 @@ message CreateOrderRequest {
   // deterministic key. The server rejects an empty key with
   // INVALID_ARGUMENT.
   string idempotency_key = 4;
+  // discount_minor is the promo discount already applied to the caller's
+  // total (RFC-0015 P4), in int64 minor units. Order subtracts it in its own
+  // total enrichment so the saga charges the discounted amount — the session
+  // total and the charged total must be the same number. Bounded server-side
+  // (0 ≤ discount ≤ items subtotal); the promo LEDGER stays entirely in
+  // checkout (order never sees the code).
+  int64 discount_minor = 5;
 }
 
 message CreateOrderResponse {

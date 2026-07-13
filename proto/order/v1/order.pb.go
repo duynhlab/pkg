@@ -108,8 +108,15 @@ type CreateOrderRequest struct {
 	// deterministic key. The server rejects an empty key with
 	// INVALID_ARGUMENT.
 	IdempotencyKey string `protobuf:"bytes,4,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// discount_minor is the promo discount already applied to the caller's
+	// total (RFC-0015 P4), in int64 minor units. Order subtracts it in its own
+	// total enrichment so the saga charges the discounted amount — the session
+	// total and the charged total must be the same number. Bounded server-side
+	// (0 ≤ discount ≤ items subtotal); the promo LEDGER stays entirely in
+	// checkout (order never sees the code).
+	DiscountMinor int64 `protobuf:"varint,5,opt,name=discount_minor,json=discountMinor,proto3" json:"discount_minor,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CreateOrderRequest) Reset() {
@@ -168,6 +175,13 @@ func (x *CreateOrderRequest) GetIdempotencyKey() string {
 		return x.IdempotencyKey
 	}
 	return ""
+}
+
+func (x *CreateOrderRequest) GetDiscountMinor() int64 {
+	if x != nil {
+		return x.DiscountMinor
+	}
+	return 0
 }
 
 type CreateOrderResponse struct {
@@ -234,12 +248,13 @@ const file_order_v1_order_proto_rawDesc = "" +
 	"product_id\x18\x01 \x01(\tR\tproductId\x12!\n" +
 	"\fproduct_name\x18\x02 \x01(\tR\vproductName\x12\x1a\n" +
 	"\bquantity\x18\x03 \x01(\x05R\bquantity\x12(\n" +
-	"\x10unit_price_minor\x18\x04 \x01(\x03R\x0eunitPriceMinor\"\xa8\x01\n" +
+	"\x10unit_price_minor\x18\x04 \x01(\x03R\x0eunitPriceMinor\"\xcf\x01\n" +
 	"\x12CreateOrderRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12)\n" +
 	"\x05items\x18\x02 \x03(\v2\x13.order.v1.OrderItemR\x05items\x12%\n" +
 	"\x0epayment_method\x18\x03 \x01(\tR\rpaymentMethod\x12'\n" +
-	"\x0fidempotency_key\x18\x04 \x01(\tR\x0eidempotencyKey\"H\n" +
+	"\x0fidempotency_key\x18\x04 \x01(\tR\x0eidempotencyKey\x12%\n" +
+	"\x0ediscount_minor\x18\x05 \x01(\x03R\rdiscountMinor\"H\n" +
 	"\x13CreateOrderResponse\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status2Z\n" +
