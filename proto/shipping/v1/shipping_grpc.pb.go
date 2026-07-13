@@ -22,6 +22,7 @@ const (
 	ShippingService_GetShipmentByOrder_FullMethodName = "/shipping.v1.ShippingService/GetShipmentByOrder"
 	ShippingService_CreateShipment_FullMethodName     = "/shipping.v1.ShippingService/CreateShipment"
 	ShippingService_CancelShipment_FullMethodName     = "/shipping.v1.ShippingService/CancelShipment"
+	ShippingService_GetQuote_FullMethodName           = "/shipping.v1.ShippingService/GetQuote"
 )
 
 // ShippingServiceClient is the client API for ShippingService service.
@@ -49,6 +50,11 @@ type ShippingServiceClient interface {
 	// CreateShipment). Idempotent: cancelling an already-cancelled or
 	// non-existent shipment succeeds, so compensation is safe to retry.
 	CancelShipment(ctx context.Context, in *CancelShipmentRequest, opts ...grpc.CallOption) (*CancelShipmentResponse, error)
+	// GetQuote prices a shipping method for a destination region (RFC-0015 P3).
+	// The rate table lives in shipping-service — the quote authority — ending
+	// the era of hardcoded $5 fees elsewhere. Pure read, no side effects; an
+	// unknown method or region answers INVALID_ARGUMENT so checkout can 400.
+	GetQuote(ctx context.Context, in *GetQuoteRequest, opts ...grpc.CallOption) (*GetQuoteResponse, error)
 }
 
 type shippingServiceClient struct {
@@ -89,6 +95,16 @@ func (c *shippingServiceClient) CancelShipment(ctx context.Context, in *CancelSh
 	return out, nil
 }
 
+func (c *shippingServiceClient) GetQuote(ctx context.Context, in *GetQuoteRequest, opts ...grpc.CallOption) (*GetQuoteResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetQuoteResponse)
+	err := c.cc.Invoke(ctx, ShippingService_GetQuote_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ShippingServiceServer is the server API for ShippingService service.
 // All implementations must embed UnimplementedShippingServiceServer
 // for forward compatibility.
@@ -114,6 +130,11 @@ type ShippingServiceServer interface {
 	// CreateShipment). Idempotent: cancelling an already-cancelled or
 	// non-existent shipment succeeds, so compensation is safe to retry.
 	CancelShipment(context.Context, *CancelShipmentRequest) (*CancelShipmentResponse, error)
+	// GetQuote prices a shipping method for a destination region (RFC-0015 P3).
+	// The rate table lives in shipping-service — the quote authority — ending
+	// the era of hardcoded $5 fees elsewhere. Pure read, no side effects; an
+	// unknown method or region answers INVALID_ARGUMENT so checkout can 400.
+	GetQuote(context.Context, *GetQuoteRequest) (*GetQuoteResponse, error)
 	mustEmbedUnimplementedShippingServiceServer()
 }
 
@@ -132,6 +153,9 @@ func (UnimplementedShippingServiceServer) CreateShipment(context.Context, *Creat
 }
 func (UnimplementedShippingServiceServer) CancelShipment(context.Context, *CancelShipmentRequest) (*CancelShipmentResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CancelShipment not implemented")
+}
+func (UnimplementedShippingServiceServer) GetQuote(context.Context, *GetQuoteRequest) (*GetQuoteResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQuote not implemented")
 }
 func (UnimplementedShippingServiceServer) mustEmbedUnimplementedShippingServiceServer() {}
 func (UnimplementedShippingServiceServer) testEmbeddedByValue()                         {}
@@ -208,6 +232,24 @@ func _ShippingService_CancelShipment_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ShippingService_GetQuote_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQuoteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ShippingServiceServer).GetQuote(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ShippingService_GetQuote_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ShippingServiceServer).GetQuote(ctx, req.(*GetQuoteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ShippingService_ServiceDesc is the grpc.ServiceDesc for ShippingService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -226,6 +268,10 @@ var ShippingService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CancelShipment",
 			Handler:    _ShippingService_CancelShipment_Handler,
+		},
+		{
+			MethodName: "GetQuote",
+			Handler:    _ShippingService_GetQuote_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -25,6 +25,27 @@ service ShippingService {
   // CreateShipment). Idempotent: cancelling an already-cancelled or
   // non-existent shipment succeeds, so compensation is safe to retry.
   rpc CancelShipment(CancelShipmentRequest) returns (CancelShipmentResponse);
+
+  // GetQuote prices a shipping method for a destination region (RFC-0015 P3).
+  // The rate table lives in shipping-service — the quote authority — ending
+  // the era of hardcoded $5 fees elsewhere. Pure read, no side effects; an
+  // unknown method or region answers INVALID_ARGUMENT so checkout can 400.
+  rpc GetQuote(GetQuoteRequest) returns (GetQuoteResponse);
+}
+
+message GetQuoteRequest {
+  // method is the shipping method key, e.g. "standard", "express".
+  string method = 1;
+  // region is the destination country/region code from the checkout address
+  // (e.g. "VN", "US"); shipping decides how coarse the buckets are.
+  string region = 2;
+}
+
+message GetQuoteResponse {
+  // fee_minor is the shipping fee in int64 minor units (platform money rule).
+  int64 fee_minor = 1;
+  // eta_days is the indicative delivery estimate for the method/region pair.
+  int32 eta_days = 2;
 }
 
 message GetShipmentByOrderRequest {
