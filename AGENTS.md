@@ -47,7 +47,7 @@ copy-paste it.
 |------|------------------|
 | **`grpcx/`** | Shared gRPC server/client helpers for east-west calls. `NewServer` (otelgrpc stats handler + gRPC health service + server reflection); `Dial` (otelgrpc + client-side `round_robin` over `dns:///` headless Services + default per-RPC deadline `DefaultCallTimeout` = 5s). Transport is currently plaintext (mTLS is a later phase). |
 | **`authmw/`** | Single fail-closed gin JWT middleware. Verifies RS256 bearer tokens locally against a cached, background-refreshed JWKS (`NewVerifier(jwksURL, iss, aud)` + `MiddlewareJWT(verifier)`), pinning issuer/audience and the RS256 alg. Missing header / invalid token → 401; JWKS never loaded → 503 (still denies); nil verifier → 503. Sets `user_id` / `username` / `email` on the gin context. JWT-only — the opaque-token `GetMe` fallback was removed in RFC-0009 Phase 5. |
-| **`obsx/`** | `SetupMetrics` installs a global OTel `MeterProvider` backed by a Prometheus exporter on the **default** registry, so the `grpcx` otelgrpc handlers' gRPC RED metrics surface on the service's existing `/metrics` endpoint (idempotent — safe to call once). `TraceIDFromContext` returns the active span's trace ID for log↔trace correlation. |
+| **`obsx/`** | `SetupObservability` — the single OTel SDK wiring point (call once in `main`, defer `Shutdown`). Builds per-signal providers from `Config`/`ConfigFromEnv`: traces (OTLP/HTTP, ParentBased sampler + W3C propagator), metrics (OTLP/HTTP PeriodicReader with SLO-preserving Views + Go runtime instrumentation; on by default since the RFC-0014 P3 cutover), logs (OTLP/HTTP via the `otelzap` bridge, opt-in). Installs the enabled providers as the OTel globals so contrib instrumentation (otelgin, otelgrpc, Temporal SDK) exports with no extra wiring — there is **no Prometheus exporter, no `/metrics` endpoint, and no default-registry bridge** (the scrape-era `SetupMetrics` was removed at P3). `TraceIDFromContext` returns the active span's trace ID for log↔trace correlation. |
 | **`temporalx/`** | Temporal bootstrap helpers mirroring `grpcx`/`obsx`. `Dial(Config{HostPort, Namespace})` connects to the frontend with the OpenTelemetry tracing interceptor registered, so workflow/activity spans join the trace of the request that started them; `NewWorker(client, taskQueue)` builds a worker that inherits that interceptor. Plaintext transport (mTLS is a later phase). Used by the order-fulfillment saga. |
 | **`logger/zerolog/`** | `rs/zerolog` logger: `Setup(level)`, context helpers with trace-ID injection. |
 | **`logger/clog/`** | `log/slog` + `chainguard-dev/clog` logger: `TracingHandler`, `Setup(level)`, `*Context` helpers. |
@@ -93,6 +93,3 @@ after editing a `.proto`, then commit the result.
 - **`buf breaking` runs in CI** against `main`; a backward-incompatible proto
   change fails the PR. Bump the package version / add new fields instead of
   changing existing ones.
-- `obsx.SetupMetrics` registers on the **default** Prometheus registry and must
-  not be called twice with two exporters (it is idempotent, but a second
-  exporter on the default registry would panic).
