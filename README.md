@@ -1,9 +1,9 @@
 # pkg
 
 Shared Go library for the **duynhlab** microservices platform — the common gRPC,
-auth, observability, logging, database-migration and protobuf code so the
-services (`auth`, `user`, `product`, `cart`, `order`, `review`, `shipping`,
-`notification`) don't reimplement it.
+auth, observability, database, logging, database-migration and protobuf code so
+the services (`auth`, `user`, `product`, `cart`, `order`, `review`, `shipping`,
+`notification`, `payment`, `checkout`) don't reimplement it.
 
 ```bash
 go get github.com/duynhlab/pkg
@@ -18,7 +18,8 @@ up to date.
 |---------|------------------|
 | `grpcx` | gRPC server/client helpers for east-west calls — `NewServer` (otelgrpc + health + reflection), `Dial` (otelgrpc + `round_robin` over `dns:///` + default per-RPC timeout). Plaintext transport (mTLS later). |
 | `authmw` | Fail-closed Gin JWT middleware — verifies RS256 bearer tokens locally against a cached JWKS (issuer/audience pinned, RS256-only); missing/invalid → 401, JWKS unavailable → 503 (still denies); sets `user_id`/`username`/`email` on the context. |
-| `obsx` | Observability bootstrap: `SetupMetrics` (gRPC RED metrics on the existing `/metrics`), `SetupProfiling` (Pyroscope continuous profiling), `TracerProviderWithProfiles` (traces↔profiles), `TraceIDFromContext` (log↔trace correlation). |
+| `obsx` | OpenTelemetry bootstrap — the single SDK wiring point. `SetupObservability(ctx, ConfigFromEnv())` builds traces + metrics + logs over OTLP (no scrape endpoint since RFC-0014 P3) and returns one `Shutdown`; `ZapCore` tees zap logs into the OTLP pipeline; `TraceContext(ctx)` binds a span to a log so the bridge stamps native trace_id/span_id; `SetupProfiling` (Pyroscope), `TracerProviderWithProfiles` (traces↔profiles), `TraceIDFromContext` (trace-id string). |
+| `dbx` | Postgres pool pre-wired with OpenTelemetry — `NewPool(ctx, dsn, opts...)` builds a `pgxpool` with otelpgx query tracing (bounded span names, no bind-parameter/connection PII), `pgxpool.*` pool-stat metrics, and the transaction-mode-pooler-safe settings (simple protocol, caches off). The one place the fleet configures DB instrumentation. |
 | `temporalx` | Temporal client/worker bootstrap with the OTel tracing interceptor wired in — `Dial(Config{HostPort, Namespace})`, `NewWorker(client, taskQueue)`. Used by the order-fulfillment saga. |
 | `migratex` | Runs embedded SQL schema migrations with golang-migrate — `Run(fsys, dir, dsn)`. |
 | `httpx` | Shared HTTP helpers — consistent error responses (`RespondError`) and pagination (`ParsePage`, `NewPaginated`). |
@@ -31,26 +32,31 @@ up to date.
 
 ```go
 import (
+	"github.com/duynhlab/pkg/dbx"
 	"github.com/duynhlab/pkg/grpcx"
 	"github.com/duynhlab/pkg/obsx"
-	"github.com/duynhlab/pkg/logger/zerolog"
+	"go.uber.org/zap"
 )
 
-zerolog.Setup("info")
+// One-call OTel SDK wiring — traces + metrics + logs over OTLP. Defer Shutdown.
+obs, _ := obsx.SetupObservability(ctx, obsx.ConfigFromEnv())
+defer obs.Shutdown(ctx)
 
-// gRPC RED metrics on the existing /metrics endpoint.
-stopMetrics, _ := obsx.SetupMetrics()
-defer stopMetrics(ctx)
-
-// Continuous profiling (gated by your own PROFILING_ENABLED; reads PYROSCOPE_ENDPOINT).
-stopProfiling, err := obsx.SetupProfiling()
-if err == nil {
+// Continuous profiling (gated by PROFILING_ENABLED; reads PYROSCOPE_ENDPOINT).
+if stopProfiling, err := obsx.SetupProfiling(); err == nil {
 	defer stopProfiling(ctx)
 }
 
+// Postgres pool with query tracing + pool-stat metrics baked in.
+pool, _ := dbx.NewPool(ctx, cfg.Database.BuildDSN(), dbx.WithMaxConns(cfg.Database.MaxConnections))
+defer pool.Close()
+
 // gRPC server + client.
 srv, health := grpcx.NewServer()            // otel + health + reflection
-conn, _ := grpcx.Dial("dns:///shipping-grpc.shipping.svc.cluster.local:9090") // otel + round_robin
+conn, _ := grpcx.Dial("dns:///shipping.shipping.svc.cluster.local:9090") // otel + round_robin
+
+// Native log↔trace correlation from a repo/handler.
+log.Error("query failed", zap.Error(err), obsx.TraceContext(ctx))
 ```
 
 ## gRPC / Protobuf
