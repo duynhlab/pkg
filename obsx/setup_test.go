@@ -146,12 +146,24 @@ func TestSetupObservability_MetricsViews(t *testing.T) {
 		attribute.Int("server.port", 9090),
 		attribute.String("rpc.method", "CreateShipment")))
 
+	// otelpgx creates this instrument via the semconv dbconv helper with no
+	// bucket hint, so without the View the SDK's ms-shaped default (0,5,…,10000)
+	// applies to a seconds-unit histogram and every sub-5s query collapses into
+	// the first bucket. Record a typical 2ms query to prove the DB-scale
+	// boundaries are in effect.
+	db, err := meter.Float64Histogram("db.client.operation.duration")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.Record(ctx, 0.002, metric.WithAttributes(
+		attribute.String("pgx.operation.type", "query")))
+
 	var rm metricdata.ResourceMetrics
 	if err := reader.Collect(ctx, &rm); err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
 
-	var sawDuration, sawRPC, sawRuntime bool
+	var sawDuration, sawRPC, sawDB, sawRuntime bool
 	for _, sm := range rm.ScopeMetrics {
 		for _, m := range sm.Metrics {
 			switch m.Name {
@@ -196,13 +208,31 @@ func TestSetupObservability_MetricsViews(t *testing.T) {
 				if _, found := attrs.Value("rpc.method"); !found {
 					t.Error("rpc.method must survive the attribute filter")
 				}
+			case "db.client.operation.duration":
+				sawDB = true
+				h, ok := m.Data.(metricdata.Histogram[float64])
+				if !ok {
+					t.Fatalf("db duration data type %T", m.Data)
+				}
+				got := h.DataPoints[0].Bounds
+				if len(got) != len(DBDurationBuckets) {
+					t.Fatalf("db duration bounds = %v, want the DB-scale set %v", got, DBDurationBuckets)
+				}
+				for i := range got {
+					if got[i] != DBDurationBuckets[i] {
+						t.Fatalf("db duration bounds = %v, want %v", got, DBDurationBuckets)
+					}
+				}
+				if _, found := h.DataPoints[0].Attributes.Value("pgx.operation.type"); !found {
+					t.Error("pgx.operation.type must survive on db.client.operation.duration (bounded op label)")
+				}
 			case "go.goroutine.count":
 				sawRuntime = true
 			}
 		}
 	}
-	if !sawDuration || !sawRPC {
-		t.Fatalf("missing instruments: duration=%v rpc=%v", sawDuration, sawRPC)
+	if !sawDuration || !sawRPC || !sawDB {
+		t.Fatalf("missing instruments: duration=%v rpc=%v db=%v", sawDuration, sawRPC, sawDB)
 	}
 	if !sawRuntime {
 		t.Error("runtime instrumentation must be started (go.goroutine.count absent) — D-4 liveness depends on it")

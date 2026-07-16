@@ -45,6 +45,20 @@ import (
 // math silently breaks.
 var DurationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.3, 0.5, 0.75, 1, 2, 5, 10}
 
+// DBDurationBuckets shapes db.client.operation.duration (otelpgx, RFC-0017 W4).
+// DB queries live an order of magnitude below HTTP requests (~1–5 ms typical),
+// so the HTTP set above — whose smallest bucket is 5 ms — would be blind to the
+// entire healthy range. This is exactly the semconv-advised set for that
+// instrument (https://opentelemetry.io/docs/specs/semconv/database/database-metrics/
+// — "metric.db.client.operation.duration"); we keep it verbatim for
+// interoperability and accept its known gaps (no sub-1ms bucket, a 0.1→0.5
+// jump) rather than invent a bespoke grid. otelpgx creates the histogram via
+// the semconv dbconv helper with no bucket hint, so without this View the SDK
+// default (0,5,…,10000 — ms-shaped) applies to a seconds-unit histogram and
+// every sub-5s query collapses into the first bucket (quantiles become
+// garbage).
+var DBDurationBuckets = []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10}
+
 // BodySizeBuckets shapes http.server.{request,response}.body.size — semconv
 // ships no bucket advice for byte histograms, and the SDK default
 // (duration-shaped) boundaries are meaningless for sizes.
@@ -397,6 +411,20 @@ func metricViews() []sdkmetric.View {
 		sdkmetric.NewView(
 			sdkmetric.Instrument{Name: "rpc.client.call.duration"},
 			sdkmetric.Stream{AttributeFilter: denyServerAddr},
+		),
+		// DB-scale buckets for the semconv DB-client histogram (see
+		// DBDurationBuckets). The View matches by instrument name, so it applies
+		// to ANY emitter of this semconv instrument — today that is only otelpgx
+		// (redisotel v9.21 emits db.client.connections.*, not this name), and the
+		// semconv-advised boundaries are the right treatment for the instrument
+		// regardless of emitter. No AttributeFilter: otelpgx records only the
+		// bounded pgx.operation.type + db.system.name pair (v0.11.1 source), and
+		// a View without a filter never widens an attribute set anyway.
+		sdkmetric.NewView(
+			sdkmetric.Instrument{Name: "db.client.operation.duration"},
+			sdkmetric.Stream{
+				Aggregation: sdkmetric.AggregationExplicitBucketHistogram{Boundaries: DBDurationBuckets},
+			},
 		),
 	}
 }
