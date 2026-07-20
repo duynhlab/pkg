@@ -23,9 +23,12 @@
 package dbx
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math"
+	"os"
+	"time"
 
 	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5"
@@ -35,9 +38,11 @@ import (
 )
 
 type config struct {
-	maxConns       int32
-	tracerProvider trace.TracerProvider
-	meterProvider  metric.MeterProvider
+	maxConns        int32
+	tracerProvider  trace.TracerProvider
+	meterProvider   metric.MeterProvider
+	passwordFile    string
+	maxConnLifetime time.Duration
 }
 
 // Option customizes NewPool.
@@ -65,6 +70,37 @@ func WithTracerProvider(tp trace.TracerProvider) Option {
 // to the global provider; test-injection only.
 func WithMeterProvider(mp metric.MeterProvider) Option {
 	return func(c *config) { c.meterProvider = mp }
+}
+
+// WithPasswordFile makes the pool read the connection password from a file on
+// every new connection (via pgxpool BeforeConnect) instead of taking it from the
+// DSN. This is the credential hot-reload path (RFC-0008 / ADR-025 pattern A):
+// when an external rotator (OpenBAO static-role → ESO → mounted Secret) updates
+// the file, new connections pick up the new password without a pod restart. Only
+// a trailing newline is stripped (surrounding whitespace is preserved) and an
+// empty file is rejected. Prefer a DSN with no password when using this so no
+// static secret remains in the connection string for a caller to log.
+//
+// Because an existing connection keeps its original password until it is
+// recycled, WithPasswordFile also applies a default MaxConnLifetime of 30m
+// (jitter 3m) so the whole pool migrates onto a rotated password within a
+// bounded window; override with WithMaxConnLifetime. An empty path is ignored
+// (the DSN password stands), so existing callers are unaffected.
+func WithPasswordFile(path string) Option {
+	return func(c *config) { c.passwordFile = path }
+}
+
+// WithMaxConnLifetime caps how long a connection is reused before it is closed
+// and re-established (pgxpool MaxConnLifetime), with a 10% jitter to avoid a
+// thundering-herd reconnect. Values <= 0 are ignored (the pgx default — or the
+// WithPasswordFile default — applies). Pair it with WithPasswordFile to bound
+// how quickly a rotated password takes effect across the pool.
+func WithMaxConnLifetime(d time.Duration) Option {
+	return func(c *config) {
+		if d > 0 {
+			c.maxConnLifetime = d
+		}
+	}
 }
 
 // NewPool parses dsn, applies the transaction-mode-pooler-safe settings and the
@@ -113,6 +149,39 @@ func NewPool(ctx context.Context, dsn string, opts ...Option) (*pgxpool.Pool, er
 		tracerOpts = append(tracerOpts, otelpgx.WithTracerProvider(cfg.tracerProvider))
 	}
 	poolCfg.ConnConfig.Tracer = otelpgx.NewTracer(tracerOpts...)
+
+	// Credential hot-reload (RFC-0008 / ADR-025 pattern A): read the password
+	// from a mounted file on every new connection so an externally rotated
+	// password is used without a restart. Set only when a file is configured,
+	// leaving DSN-password callers untouched. Default a bounded connection
+	// lifetime (30m + jitter) when a file is used so old-password connections
+	// recycle promptly; WithMaxConnLifetime overrides it.
+	if cfg.passwordFile != "" {
+		path := cfg.passwordFile
+		poolCfg.BeforeConnect = func(_ context.Context, cc *pgx.ConnConfig) error {
+			data, err := os.ReadFile(path) //nolint:gosec // G304: path is an operator-controlled mount (WithPasswordFile), not user input
+			if err != nil {
+				return fmt.Errorf("dbx: read password file: %w", err)
+			}
+			// Strip only a trailing newline (the file-mount convention); keep any
+			// other bytes so a password with surrounding whitespace stays intact.
+			pw := string(bytes.TrimRight(data, "\r\n"))
+			if pw == "" {
+				// Fail closed with a clear signal rather than authenticating with
+				// an empty password (a truncated/not-yet-written mount).
+				return fmt.Errorf("dbx: password file %q is empty", path)
+			}
+			cc.Password = pw
+			return nil
+		}
+		if cfg.maxConnLifetime == 0 {
+			cfg.maxConnLifetime = 30 * time.Minute
+		}
+	}
+	if cfg.maxConnLifetime > 0 {
+		poolCfg.MaxConnLifetime = cfg.maxConnLifetime
+		poolCfg.MaxConnLifetimeJitter = cfg.maxConnLifetime / 10
+	}
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {

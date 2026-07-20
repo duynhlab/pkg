@@ -10,6 +10,8 @@ package dbx
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -118,6 +120,109 @@ func TestNewPool_RecordsPoolStats(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("no pgxpool.* metrics registered")
+	}
+}
+
+// A password delivered via WithPasswordFile is read per new connection, so a
+// rotated password (rewrite the file after ALTER ROLE) is picked up by new
+// connections without recreating the pool — RFC-0008 / ADR-025 pattern A. The
+// DSN still carries the original password, so success also proves BeforeConnect
+// overrides the DSN, and a stale file then fails auth.
+func TestNewPool_PasswordFileRotation(t *testing.T) {
+	ctx := context.Background()
+	dsn := startPostgres(t) // role "app" is the container superuser (password "secret")
+
+	pwFile := filepath.Join(t.TempDir(), "password")
+	if err := os.WriteFile(pwFile, []byte("secret\n"), 0o600); err != nil {
+		t.Fatalf("write password file: %v", err)
+	}
+
+	pool, err := NewPool(ctx, dsn, WithPasswordFile(pwFile))
+	if err != nil {
+		t.Fatalf("NewPool: %v", err)
+	}
+	defer pool.Close()
+
+	// A password file with no explicit lifetime applies the bounded default
+	// (30m + 10% jitter) so rotated connections recycle within a known window.
+	if got := pool.Config().MaxConnLifetime; got != 30*time.Minute {
+		t.Errorf("default MaxConnLifetime = %v, want 30m", got)
+	}
+	if got := pool.Config().MaxConnLifetimeJitter; got != 3*time.Minute {
+		t.Errorf("default MaxConnLifetimeJitter = %v, want 3m", got)
+	}
+
+	if _, err := pool.Exec(ctx, "SELECT 1"); err != nil {
+		t.Fatalf("query with initial file password: %v", err)
+	}
+
+	// Rotate the role's password, then update the file to match.
+	if _, err := pool.Exec(ctx, "ALTER ROLE app PASSWORD 'rotated'"); err != nil {
+		t.Fatalf("rotate password: %v", err)
+	}
+	if err := os.WriteFile(pwFile, []byte("rotated\n"), 0o600); err != nil {
+		t.Fatalf("rewrite password file: %v", err)
+	}
+	pool.Reset() // drop pooled connections; the next acquire re-reads the file
+
+	if _, err := pool.Exec(ctx, "SELECT 1"); err != nil {
+		t.Fatalf("query after rotation should use the new file password: %v", err)
+	}
+
+	// A stale file (the pre-rotation password) must now fail closed. The earlier
+	// success with file=rotated while the DSN still carried "secret" is what
+	// proved the file overrides the DSN; this confirms a wrong file is rejected.
+	if err := os.WriteFile(pwFile, []byte("secret\n"), 0o600); err != nil {
+		t.Fatalf("write stale password file: %v", err)
+	}
+	pool.Reset()
+	badCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if _, err := pool.Exec(badCtx, "SELECT 1"); err == nil {
+		t.Fatal("expected auth failure with a stale password file, got nil")
+	}
+}
+
+// A missing password file must fail pool creation (BeforeConnect errors on the
+// initial ping) rather than silently connecting.
+func TestNewPool_PasswordFileMissing(t *testing.T) {
+	dsn := startPostgres(t)
+	_, err := NewPool(context.Background(), dsn,
+		WithPasswordFile(filepath.Join(t.TempDir(), "does-not-exist")))
+	if err == nil {
+		t.Fatal("expected error for missing password file, got nil")
+	}
+}
+
+// An explicit WithMaxConnLifetime overrides the WithPasswordFile 30m default.
+func TestNewPool_PasswordFileLifetimeOverride(t *testing.T) {
+	dsn := startPostgres(t)
+	pwFile := filepath.Join(t.TempDir(), "password")
+	if err := os.WriteFile(pwFile, []byte("secret\n"), 0o600); err != nil {
+		t.Fatalf("write password file: %v", err)
+	}
+	pool, err := NewPool(context.Background(), dsn,
+		WithPasswordFile(pwFile), WithMaxConnLifetime(45*time.Minute))
+	if err != nil {
+		t.Fatalf("NewPool: %v", err)
+	}
+	defer pool.Close()
+	if got := pool.Config().MaxConnLifetime; got != 45*time.Minute {
+		t.Errorf("MaxConnLifetime = %v, want 45m (override of the default)", got)
+	}
+}
+
+// An empty password file must fail pool creation (fail closed) rather than
+// authenticating with an empty password.
+func TestNewPool_PasswordFileEmpty(t *testing.T) {
+	dsn := startPostgres(t)
+	pwFile := filepath.Join(t.TempDir(), "password")
+	if err := os.WriteFile(pwFile, []byte("\n"), 0o600); err != nil {
+		t.Fatalf("write empty password file: %v", err)
+	}
+	_, err := NewPool(context.Background(), dsn, WithPasswordFile(pwFile))
+	if err == nil {
+		t.Fatal("expected error for empty password file, got nil")
 	}
 }
 
