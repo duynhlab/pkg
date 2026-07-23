@@ -1,0 +1,201 @@
+syntax = "proto3";
+
+package inventory.v1;
+
+option go_package = "github.com/duynhlab/pkg/proto/inventory/v1;inventoryv1";
+
+// InventoryService is the internal (east-west) contract for the inventory
+// service — the sole authority for stock balances, reservations, and stock
+// movements (RFC-0021, supersedes the product-owned stock surface in
+// product.v1). Checkout calls the availability reads; the order-fulfillment
+// saga calls Reserve/Release/Commit.
+//
+// Identity: sku_id is an opaque immutable string. In the initial migration
+// one product is one sellable SKU (sku_id = product id); a future variant
+// model adds SKUs without changing this contract.
+//
+// Errors carry a google.rpc.ErrorInfo detail with a stable reason
+// (grpcx.ErrorWithReason): INSUFFICIENT_STOCK, SKU_NOT_FOUND,
+// WAREHOUSE_NOT_FOUND, IDEMPOTENCY_CONFLICT, INVALID_TRANSITION,
+// CONCURRENCY_CONFLICT, VALIDATION_ERROR, DEPENDENCY_UNAVAILABLE.
+// Business reasons are non-retryable for workflow callers.
+service InventoryService {
+  // BatchGetAvailability returns per-SKU availability for product pages and
+  // checkout snapshots. Read-only; unknown SKUs come back with status
+  // AVAILABILITY_STATUS_UNKNOWN rather than erroring the batch.
+  rpc BatchGetAvailability(BatchGetAvailabilityRequest) returns (BatchGetAvailabilityResponse);
+
+  // CheckAvailability answers "can this whole basket be fulfilled?" — the
+  // checkout UX/revalidation gate. It is advisory only: the saga's Reserve is
+  // the correctness gate (the check-then-reserve TOCTOU window cannot be
+  // closed without holding a lock). Callers must not map a transport error
+  // to "out of stock"; unavailability of inventory is retryable, absence of
+  // stock is a business answer.
+  rpc CheckAvailability(CheckAvailabilityRequest) returns (CheckAvailabilityResponse);
+
+  // Reserve places an all-or-nothing hold on stock for an order (saga step).
+  // Idempotent by reservation_id + request_hash: replaying the same request
+  // returns the original result; the same reservation_id with a different
+  // payload fails with IDEMPOTENCY_CONFLICT. The response reports the actual
+  // warehouse allocation (one warehouse fulfills the whole order in v1).
+  rpc Reserve(ReserveRequest) returns (ReserveResponse);
+
+  // Release returns a reservation's stock (saga compensation, pre-pivot).
+  // Idempotent: releasing an already-released reservation is a no-op success.
+  // Releasing a COMMITTED reservation fails with INVALID_TRANSITION — a sale
+  // is undone by a return movement, never by release.
+  rpc Release(ReleaseRequest) returns (ReleaseResponse);
+
+  // Commit converts a reservation into a sale (post-pivot mandatory forward:
+  // on_hand and reserved both decrease, a SALE_COMMITTED movement is
+  // recorded). Idempotent: committing a COMMITTED reservation returns it
+  // unchanged. Committing a RELEASED reservation fails with
+  // INVALID_TRANSITION. Callers retry this until it succeeds — a confirmed
+  // order must converge to COMMITTED.
+  rpc Commit(CommitRequest) returns (CommitResponse);
+
+  // GetReservation returns a reservation and its lines — used by the
+  // order-domain reconciler and operators. Read-only.
+  rpc GetReservation(GetReservationRequest) returns (GetReservationResponse);
+}
+
+// AvailabilityStatus classifies a SKU's availability without exposing exact
+// quantities to surfaces that don't need them.
+enum AvailabilityStatus {
+  AVAILABILITY_STATUS_UNSPECIFIED = 0;
+  AVAILABILITY_STATUS_IN_STOCK = 1;
+  AVAILABILITY_STATUS_LOW_STOCK = 2;
+  AVAILABILITY_STATUS_OUT_OF_STOCK = 3;
+  // UNKNOWN means inventory could not answer (e.g. enrichment soft-fail).
+  // It is never fabricated into OUT_OF_STOCK.
+  AVAILABILITY_STATUS_UNKNOWN = 4;
+}
+
+// ReservationStatus is the reservation FSM. RESERVED is the only non-terminal
+// state; COMMITTED, RELEASED, and EXPIRED are terminal.
+enum ReservationStatus {
+  RESERVATION_STATUS_UNSPECIFIED = 0;
+  RESERVATION_STATUS_RESERVED = 1;
+  RESERVATION_STATUS_COMMITTED = 2;
+  RESERVATION_STATUS_RELEASED = 3;
+  RESERVATION_STATUS_EXPIRED = 4;
+}
+
+// ReservationItem is a SKU/quantity pair requested for reservation.
+message ReservationItem {
+  string sku_id = 1;
+  // Units requested; must be > 0.
+  int64 quantity = 2;
+}
+
+// Allocation reports where reserved stock is held. v1 allocates a whole
+// reservation from one warehouse, so all allocations share warehouse_id.
+message Allocation {
+  string sku_id = 1;
+  string warehouse_id = 2;
+  int64 quantity = 3;
+}
+
+message BatchGetAvailabilityRequest {
+  // SKUs to look up. Bounded batch; oversized requests fail VALIDATION_ERROR.
+  repeated string sku_ids = 1;
+  // Optional destination region hint for warehouse filtering. Empty means
+  // "any active warehouse".
+  string destination_region = 2;
+}
+
+message SkuAvailability {
+  string sku_id = 1;
+  AvailabilityStatus status = 2;
+  // Units promisable right now (available_to_promise, floored at 0). Money
+  // paths use this; browsing surfaces should prefer status.
+  int64 available_to_promise = 3;
+}
+
+message BatchGetAvailabilityResponse {
+  repeated SkuAvailability availabilities = 1;
+}
+
+message CheckAvailabilityRequest {
+  repeated ReservationItem items = 1;
+  string destination_region = 2;
+}
+
+// Shortage names a line that cannot be fulfilled and by how much.
+message Shortage {
+  string sku_id = 1;
+  int64 requested = 2;
+  int64 available_to_promise = 3;
+}
+
+message CheckAvailabilityResponse {
+  // True when one warehouse can fulfill every line right now.
+  bool can_fulfill = 1;
+  // Empty when can_fulfill is true.
+  repeated Shortage shortages = 2;
+}
+
+message ReserveRequest {
+  // Idempotency key for the reservation — the order ID. At most one active
+  // reservation exists per reservation_id.
+  string reservation_id = 1;
+  // The order this reservation fulfills (audit/reference; equals
+  // reservation_id in the initial integration).
+  string order_id = 2;
+  repeated ReservationItem items = 3;
+  string destination_region = 4;
+  // Canonical hash of the business-effective request fields (items sorted by
+  // sku_id, quantities, destination). A replay with the same reservation_id
+  // and hash returns the original result; a different hash fails with
+  // IDEMPOTENCY_CONFLICT.
+  string request_hash = 5;
+  // Optional observability-only expiry (RFC-3339). v1 never auto-expires an
+  // active reservation; the reconciler reports reservations past this time.
+  string expires_at = 6;
+}
+
+message ReserveResponse {
+  string reservation_id = 1;
+  ReservationStatus status = 2;
+  // Actual allocation chosen (one warehouse in v1).
+  repeated Allocation allocations = 3;
+}
+
+message ReleaseRequest {
+  string reservation_id = 1;
+  // Bounded reason code for the movement audit trail (e.g. the saga's
+  // compensation cause). Free-form text is rejected server-side.
+  string reason = 2;
+}
+
+message ReleaseResponse {
+  string reservation_id = 1;
+  ReservationStatus status = 2;
+}
+
+message CommitRequest {
+  string reservation_id = 1;
+}
+
+message CommitResponse {
+  string reservation_id = 1;
+  ReservationStatus status = 2;
+}
+
+message GetReservationRequest {
+  string reservation_id = 1;
+}
+
+message Reservation {
+  string id = 1;
+  string order_id = 2;
+  ReservationStatus status = 3;
+  repeated Allocation allocations = 4;
+  string created_at = 5;
+  string updated_at = 6;
+  string expires_at = 7;
+}
+
+message GetReservationResponse {
+  Reservation reservation = 1;
+}
