@@ -415,6 +415,182 @@ func (x *GetProductsResponse) GetProducts() []*ProductInfo {
 	return nil
 }
 
+// BatchGetCurrentPricesRequest asks for current prices by SKU. sku_id matches
+// inventory.v1 identity (one product = one SKU initially, sku_id = product id).
+type BatchGetCurrentPricesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SkuIds        []string               `protobuf:"bytes,1,rep,name=sku_ids,json=skuIds,proto3" json:"sku_ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BatchGetCurrentPricesRequest) Reset() {
+	*x = BatchGetCurrentPricesRequest{}
+	mi := &file_product_v1_product_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BatchGetCurrentPricesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BatchGetCurrentPricesRequest) ProtoMessage() {}
+
+func (x *BatchGetCurrentPricesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_product_v1_product_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BatchGetCurrentPricesRequest.ProtoReflect.Descriptor instead.
+func (*BatchGetCurrentPricesRequest) Descriptor() ([]byte, []int) {
+	return file_product_v1_product_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *BatchGetCurrentPricesRequest) GetSkuIds() []string {
+	if x != nil {
+		return x.SkuIds
+	}
+	return nil
+}
+
+// CurrentPrice is the price-only view checkout validates against; it carries
+// no stock fields by design.
+type CurrentPrice struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	SkuId string                 `protobuf:"bytes,1,opt,name=sku_id,json=skuId,proto3" json:"sku_id,omitempty"`
+	// Display-name snapshot for session line items.
+	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// Current catalog unit price in int64 minor units (RFC-0010 P3), rounded
+	// once at the product boundary.
+	PriceMinor int64 `protobuf:"varint,3,opt,name=price_minor,json=priceMinor,proto3" json:"price_minor,omitempty"`
+	// ISO-4217, e.g. "USD".
+	Currency string `protobuf:"bytes,4,opt,name=currency,proto3" json:"currency,omitempty"`
+	// False when the catalog no longer sells this SKU (unpublished/archived);
+	// checkout fails validation on it just like a missing SKU.
+	Sellable      bool `protobuf:"varint,5,opt,name=sellable,proto3" json:"sellable,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CurrentPrice) Reset() {
+	*x = CurrentPrice{}
+	mi := &file_product_v1_product_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CurrentPrice) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CurrentPrice) ProtoMessage() {}
+
+func (x *CurrentPrice) ProtoReflect() protoreflect.Message {
+	mi := &file_product_v1_product_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CurrentPrice.ProtoReflect.Descriptor instead.
+func (*CurrentPrice) Descriptor() ([]byte, []int) {
+	return file_product_v1_product_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *CurrentPrice) GetSkuId() string {
+	if x != nil {
+		return x.SkuId
+	}
+	return ""
+}
+
+func (x *CurrentPrice) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *CurrentPrice) GetPriceMinor() int64 {
+	if x != nil {
+		return x.PriceMinor
+	}
+	return 0
+}
+
+func (x *CurrentPrice) GetCurrency() string {
+	if x != nil {
+		return x.Currency
+	}
+	return ""
+}
+
+func (x *CurrentPrice) GetSellable() bool {
+	if x != nil {
+		return x.Sellable
+	}
+	return false
+}
+
+// BatchGetCurrentPricesResponse contains only the requested SKUs that exist;
+// callers treat a missing SKU as "product gone" and fail their validation.
+type BatchGetCurrentPricesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Prices        []*CurrentPrice        `protobuf:"bytes,1,rep,name=prices,proto3" json:"prices,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BatchGetCurrentPricesResponse) Reset() {
+	*x = BatchGetCurrentPricesResponse{}
+	mi := &file_product_v1_product_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BatchGetCurrentPricesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BatchGetCurrentPricesResponse) ProtoMessage() {}
+
+func (x *BatchGetCurrentPricesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_product_v1_product_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BatchGetCurrentPricesResponse.ProtoReflect.Descriptor instead.
+func (*BatchGetCurrentPricesResponse) Descriptor() ([]byte, []int) {
+	return file_product_v1_product_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *BatchGetCurrentPricesResponse) GetPrices() []*CurrentPrice {
+	if x != nil {
+		return x.Prices
+	}
+	return nil
+}
+
 var File_product_v1_product_proto protoreflect.FileDescriptor
 
 const file_product_v1_product_proto_rawDesc = "" +
@@ -444,11 +620,23 @@ const file_product_v1_product_proto_rawDesc = "" +
 	"priceMinor\x12#\n" +
 	"\ravailable_qty\x18\x04 \x01(\x05R\favailableQty\"J\n" +
 	"\x13GetProductsResponse\x123\n" +
-	"\bproducts\x18\x01 \x03(\v2\x17.product.v1.ProductInfoR\bproducts2\x86\x02\n" +
+	"\bproducts\x18\x01 \x03(\v2\x17.product.v1.ProductInfoR\bproducts\"7\n" +
+	"\x1cBatchGetCurrentPricesRequest\x12\x17\n" +
+	"\asku_ids\x18\x01 \x03(\tR\x06skuIds\"\x92\x01\n" +
+	"\fCurrentPrice\x12\x15\n" +
+	"\x06sku_id\x18\x01 \x01(\tR\x05skuId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1f\n" +
+	"\vprice_minor\x18\x03 \x01(\x03R\n" +
+	"priceMinor\x12\x1a\n" +
+	"\bcurrency\x18\x04 \x01(\tR\bcurrency\x12\x1a\n" +
+	"\bsellable\x18\x05 \x01(\bR\bsellable\"Q\n" +
+	"\x1dBatchGetCurrentPricesResponse\x120\n" +
+	"\x06prices\x18\x01 \x03(\v2\x18.product.v1.CurrentPriceR\x06prices2\xf4\x02\n" +
 	"\x0eProductService\x12Q\n" +
 	"\fReserveStock\x12\x1f.product.v1.ReserveStockRequest\x1a .product.v1.ReserveStockResponse\x12Q\n" +
 	"\fReleaseStock\x12\x1f.product.v1.ReleaseStockRequest\x1a .product.v1.ReleaseStockResponse\x12N\n" +
-	"\vGetProducts\x12\x1e.product.v1.GetProductsRequest\x1a\x1f.product.v1.GetProductsResponseB\x9b\x01\n" +
+	"\vGetProducts\x12\x1e.product.v1.GetProductsRequest\x1a\x1f.product.v1.GetProductsResponse\x12l\n" +
+	"\x15BatchGetCurrentPrices\x12(.product.v1.BatchGetCurrentPricesRequest\x1a).product.v1.BatchGetCurrentPricesResponseB\x9b\x01\n" +
 	"\x0ecom.product.v1B\fProductProtoP\x01Z2github.com/duynhlab/pkg/proto/product/v1;productv1\xa2\x02\x03PXX\xaa\x02\n" +
 	"Product.V1\xca\x02\n" +
 	"Product\\V1\xe2\x02\x16Product\\V1\\GPBMetadata\xea\x02\vProduct::V1b\x06proto3"
@@ -465,32 +653,38 @@ func file_product_v1_product_proto_rawDescGZIP() []byte {
 	return file_product_v1_product_proto_rawDescData
 }
 
-var file_product_v1_product_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_product_v1_product_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_product_v1_product_proto_goTypes = []any{
-	(*StockItem)(nil),            // 0: product.v1.StockItem
-	(*ReserveStockRequest)(nil),  // 1: product.v1.ReserveStockRequest
-	(*ReserveStockResponse)(nil), // 2: product.v1.ReserveStockResponse
-	(*ReleaseStockRequest)(nil),  // 3: product.v1.ReleaseStockRequest
-	(*ReleaseStockResponse)(nil), // 4: product.v1.ReleaseStockResponse
-	(*GetProductsRequest)(nil),   // 5: product.v1.GetProductsRequest
-	(*ProductInfo)(nil),          // 6: product.v1.ProductInfo
-	(*GetProductsResponse)(nil),  // 7: product.v1.GetProductsResponse
+	(*StockItem)(nil),                     // 0: product.v1.StockItem
+	(*ReserveStockRequest)(nil),           // 1: product.v1.ReserveStockRequest
+	(*ReserveStockResponse)(nil),          // 2: product.v1.ReserveStockResponse
+	(*ReleaseStockRequest)(nil),           // 3: product.v1.ReleaseStockRequest
+	(*ReleaseStockResponse)(nil),          // 4: product.v1.ReleaseStockResponse
+	(*GetProductsRequest)(nil),            // 5: product.v1.GetProductsRequest
+	(*ProductInfo)(nil),                   // 6: product.v1.ProductInfo
+	(*GetProductsResponse)(nil),           // 7: product.v1.GetProductsResponse
+	(*BatchGetCurrentPricesRequest)(nil),  // 8: product.v1.BatchGetCurrentPricesRequest
+	(*CurrentPrice)(nil),                  // 9: product.v1.CurrentPrice
+	(*BatchGetCurrentPricesResponse)(nil), // 10: product.v1.BatchGetCurrentPricesResponse
 }
 var file_product_v1_product_proto_depIdxs = []int32{
-	0, // 0: product.v1.ReserveStockRequest.items:type_name -> product.v1.StockItem
-	0, // 1: product.v1.ReleaseStockRequest.items:type_name -> product.v1.StockItem
-	6, // 2: product.v1.GetProductsResponse.products:type_name -> product.v1.ProductInfo
-	1, // 3: product.v1.ProductService.ReserveStock:input_type -> product.v1.ReserveStockRequest
-	3, // 4: product.v1.ProductService.ReleaseStock:input_type -> product.v1.ReleaseStockRequest
-	5, // 5: product.v1.ProductService.GetProducts:input_type -> product.v1.GetProductsRequest
-	2, // 6: product.v1.ProductService.ReserveStock:output_type -> product.v1.ReserveStockResponse
-	4, // 7: product.v1.ProductService.ReleaseStock:output_type -> product.v1.ReleaseStockResponse
-	7, // 8: product.v1.ProductService.GetProducts:output_type -> product.v1.GetProductsResponse
-	6, // [6:9] is the sub-list for method output_type
-	3, // [3:6] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	0,  // 0: product.v1.ReserveStockRequest.items:type_name -> product.v1.StockItem
+	0,  // 1: product.v1.ReleaseStockRequest.items:type_name -> product.v1.StockItem
+	6,  // 2: product.v1.GetProductsResponse.products:type_name -> product.v1.ProductInfo
+	9,  // 3: product.v1.BatchGetCurrentPricesResponse.prices:type_name -> product.v1.CurrentPrice
+	1,  // 4: product.v1.ProductService.ReserveStock:input_type -> product.v1.ReserveStockRequest
+	3,  // 5: product.v1.ProductService.ReleaseStock:input_type -> product.v1.ReleaseStockRequest
+	5,  // 6: product.v1.ProductService.GetProducts:input_type -> product.v1.GetProductsRequest
+	8,  // 7: product.v1.ProductService.BatchGetCurrentPrices:input_type -> product.v1.BatchGetCurrentPricesRequest
+	2,  // 8: product.v1.ProductService.ReserveStock:output_type -> product.v1.ReserveStockResponse
+	4,  // 9: product.v1.ProductService.ReleaseStock:output_type -> product.v1.ReleaseStockResponse
+	7,  // 10: product.v1.ProductService.GetProducts:output_type -> product.v1.GetProductsResponse
+	10, // 11: product.v1.ProductService.BatchGetCurrentPrices:output_type -> product.v1.BatchGetCurrentPricesResponse
+	8,  // [8:12] is the sub-list for method output_type
+	4,  // [4:8] is the sub-list for method input_type
+	4,  // [4:4] is the sub-list for extension type_name
+	4,  // [4:4] is the sub-list for extension extendee
+	0,  // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_product_v1_product_proto_init() }
@@ -504,7 +698,7 @@ func file_product_v1_product_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_product_v1_product_proto_rawDesc), len(file_product_v1_product_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

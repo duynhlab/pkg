@@ -19,9 +19,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ProductService_ReserveStock_FullMethodName = "/product.v1.ProductService/ReserveStock"
-	ProductService_ReleaseStock_FullMethodName = "/product.v1.ProductService/ReleaseStock"
-	ProductService_GetProducts_FullMethodName  = "/product.v1.ProductService/GetProducts"
+	ProductService_ReserveStock_FullMethodName          = "/product.v1.ProductService/ReserveStock"
+	ProductService_ReleaseStock_FullMethodName          = "/product.v1.ProductService/ReleaseStock"
+	ProductService_GetProducts_FullMethodName           = "/product.v1.ProductService/GetProducts"
+	ProductService_BatchGetCurrentPrices_FullMethodName = "/product.v1.ProductService/BatchGetCurrentPrices"
 )
 
 // ProductServiceClient is the client API for ProductService service.
@@ -47,6 +48,12 @@ type ProductServiceClient interface {
 	// re-validation (RFC-0015): product is the price authority at checkout
 	// time. Read-only; the response omits unknown ids rather than erroring.
 	GetProducts(ctx context.Context, in *GetProductsRequest, opts ...grpc.CallOption) (*GetProductsResponse, error)
+	// BatchGetCurrentPrices is the price-only successor to GetProducts
+	// (RFC-0021: availability moves to inventory.v1). DB-truth — it bypasses
+	// the browsing cache like GetProducts does. Read-only; the response omits
+	// unknown SKUs rather than erroring. GetProducts stays untouched until its
+	// callers migrate (expand → migrate → contract).
+	BatchGetCurrentPrices(ctx context.Context, in *BatchGetCurrentPricesRequest, opts ...grpc.CallOption) (*BatchGetCurrentPricesResponse, error)
 }
 
 type productServiceClient struct {
@@ -87,6 +94,16 @@ func (c *productServiceClient) GetProducts(ctx context.Context, in *GetProductsR
 	return out, nil
 }
 
+func (c *productServiceClient) BatchGetCurrentPrices(ctx context.Context, in *BatchGetCurrentPricesRequest, opts ...grpc.CallOption) (*BatchGetCurrentPricesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BatchGetCurrentPricesResponse)
+	err := c.cc.Invoke(ctx, ProductService_BatchGetCurrentPrices_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ProductServiceServer is the server API for ProductService service.
 // All implementations must embed UnimplementedProductServiceServer
 // for forward compatibility.
@@ -110,6 +127,12 @@ type ProductServiceServer interface {
 	// re-validation (RFC-0015): product is the price authority at checkout
 	// time. Read-only; the response omits unknown ids rather than erroring.
 	GetProducts(context.Context, *GetProductsRequest) (*GetProductsResponse, error)
+	// BatchGetCurrentPrices is the price-only successor to GetProducts
+	// (RFC-0021: availability moves to inventory.v1). DB-truth — it bypasses
+	// the browsing cache like GetProducts does. Read-only; the response omits
+	// unknown SKUs rather than erroring. GetProducts stays untouched until its
+	// callers migrate (expand → migrate → contract).
+	BatchGetCurrentPrices(context.Context, *BatchGetCurrentPricesRequest) (*BatchGetCurrentPricesResponse, error)
 	mustEmbedUnimplementedProductServiceServer()
 }
 
@@ -128,6 +151,9 @@ func (UnimplementedProductServiceServer) ReleaseStock(context.Context, *ReleaseS
 }
 func (UnimplementedProductServiceServer) GetProducts(context.Context, *GetProductsRequest) (*GetProductsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetProducts not implemented")
+}
+func (UnimplementedProductServiceServer) BatchGetCurrentPrices(context.Context, *BatchGetCurrentPricesRequest) (*BatchGetCurrentPricesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method BatchGetCurrentPrices not implemented")
 }
 func (UnimplementedProductServiceServer) mustEmbedUnimplementedProductServiceServer() {}
 func (UnimplementedProductServiceServer) testEmbeddedByValue()                        {}
@@ -204,6 +230,24 @@ func _ProductService_GetProducts_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProductService_BatchGetCurrentPrices_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BatchGetCurrentPricesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProductServiceServer).BatchGetCurrentPrices(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProductService_BatchGetCurrentPrices_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProductServiceServer).BatchGetCurrentPrices(ctx, req.(*BatchGetCurrentPricesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ProductService_ServiceDesc is the grpc.ServiceDesc for ProductService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -222,6 +266,10 @@ var ProductService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetProducts",
 			Handler:    _ProductService_GetProducts_Handler,
+		},
+		{
+			MethodName: "BatchGetCurrentPrices",
+			Handler:    _ProductService_BatchGetCurrentPrices_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
