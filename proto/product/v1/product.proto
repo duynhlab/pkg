@@ -25,6 +25,13 @@ service ProductService {
   // re-validation (RFC-0015): product is the price authority at checkout
   // time. Read-only; the response omits unknown ids rather than erroring.
   rpc GetProducts(GetProductsRequest) returns (GetProductsResponse);
+
+  // BatchGetCurrentPrices is the price-only successor to GetProducts
+  // (RFC-0021: availability moves to inventory.v1). DB-truth — it bypasses
+  // the browsing cache like GetProducts does. Read-only; the response omits
+  // unknown SKUs rather than erroring. GetProducts stays untouched until its
+  // callers migrate (expand → migrate → contract).
+  rpc BatchGetCurrentPrices(BatchGetCurrentPricesRequest) returns (BatchGetCurrentPricesResponse);
 }
 
 // StockItem is a single product/quantity pair within a reservation.
@@ -71,4 +78,34 @@ message ProductInfo {
 // treat a missing id as "product gone" and fail their validation.
 message GetProductsResponse {
   repeated ProductInfo products = 1;
+}
+
+// --- RFC-0021 additions: price-only checkout reads ---
+
+// BatchGetCurrentPricesRequest asks for current prices by SKU. sku_id matches
+// inventory.v1 identity (one product = one SKU initially, sku_id = product id).
+message BatchGetCurrentPricesRequest {
+  repeated string sku_ids = 1;
+}
+
+// CurrentPrice is the price-only view checkout validates against; it carries
+// no stock fields by design.
+message CurrentPrice {
+  string sku_id = 1;
+  // Display-name snapshot for session line items.
+  string name = 2;
+  // Current catalog unit price in int64 minor units (RFC-0010 P3), rounded
+  // once at the product boundary.
+  int64 price_minor = 3;
+  // ISO-4217, e.g. "USD".
+  string currency = 4;
+  // False when the catalog no longer sells this SKU (unpublished/archived);
+  // checkout fails validation on it just like a missing SKU.
+  bool sellable = 5;
+}
+
+// BatchGetCurrentPricesResponse contains only the requested SKUs that exist;
+// callers treat a missing SKU as "product gone" and fail their validation.
+message BatchGetCurrentPricesResponse {
+  repeated CurrentPrice prices = 1;
 }
