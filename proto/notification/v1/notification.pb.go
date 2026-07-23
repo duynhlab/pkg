@@ -22,11 +22,17 @@ const (
 )
 
 type SendEmailRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        int32                  `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	To            string                 `protobuf:"bytes,2,opt,name=to,proto3" json:"to,omitempty"`
-	Subject       string                 `protobuf:"bytes,3,opt,name=subject,proto3" json:"subject,omitempty"`
-	Body          string                 `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	UserId  int32                  `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	To      string                 `protobuf:"bytes,2,opt,name=to,proto3" json:"to,omitempty"`
+	Subject string                 `protobuf:"bytes,3,opt,name=subject,proto3" json:"subject,omitempty"`
+	Body    string                 `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
+	// Optional idempotency key for the send. When set, the notification service
+	// deduplicates on it (UNIQUE constraint): a retried send with the same key
+	// replays the original result instead of creating a duplicate inbox row.
+	// Producers use a deterministic key, e.g. "order:<id>:type:<t>:version:<n>".
+	// Empty keeps today's at-least-once behavior (duplicates possible on retry).
+	DeliveryKey   string `protobuf:"bytes,5,opt,name=delivery_key,json=deliveryKey,proto3" json:"delivery_key,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -85,6 +91,13 @@ func (x *SendEmailRequest) GetSubject() string {
 func (x *SendEmailRequest) GetBody() string {
 	if x != nil {
 		return x.Body
+	}
+	return ""
+}
+
+func (x *SendEmailRequest) GetDeliveryKey() string {
+	if x != nil {
+		return x.DeliveryKey
 	}
 	return ""
 }
@@ -334,12 +347,13 @@ var File_notification_v1_notification_proto protoreflect.FileDescriptor
 
 const file_notification_v1_notification_proto_rawDesc = "" +
 	"\n" +
-	"\"notification/v1/notification.proto\x12\x0fnotification.v1\"i\n" +
+	"\"notification/v1/notification.proto\x12\x0fnotification.v1\"\x8c\x01\n" +
 	"\x10SendEmailRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\x05R\x06userId\x12\x0e\n" +
 	"\x02to\x18\x02 \x01(\tR\x02to\x12\x18\n" +
 	"\asubject\x18\x03 \x01(\tR\asubject\x12\x12\n" +
-	"\x04body\x18\x04 \x01(\tR\x04body\"V\n" +
+	"\x04body\x18\x04 \x01(\tR\x04body\x12!\n" +
+	"\fdelivery_key\x18\x05 \x01(\tR\vdeliveryKey\"V\n" +
 	"\x11SendEmailResponse\x12A\n" +
 	"\fnotification\x18\x01 \x01(\v2\x1d.notification.v1.NotificationR\fnotification\"S\n" +
 	"\x0eSendSMSRequest\x12\x17\n" +
