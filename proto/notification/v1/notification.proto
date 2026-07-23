@@ -18,6 +18,12 @@ message SendEmailRequest {
   string to = 2;
   string subject = 3;
   string body = 4;
+  // Optional idempotency key for the send. When set, the notification service
+  // deduplicates on it (UNIQUE constraint): a retried send with the same key
+  // replays the original result instead of creating a duplicate inbox row.
+  // Producers use a deterministic key, e.g. "order:<id>:type:<t>:version:<n>".
+  // Empty keeps today's at-least-once behavior (duplicates possible on retry).
+  string delivery_key = 5;
 }
 
 message SendEmailResponse {
