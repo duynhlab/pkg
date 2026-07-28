@@ -71,8 +71,25 @@ func Dial(cfg Config) (client.Client, error) {
 // NewWorker creates a Temporal worker that polls taskQueue on the given client.
 // Register workflows and activities on the returned worker, then call Run to
 // block until interrupted. The worker inherits the client's tracing interceptor.
-func NewWorker(c client.Client, taskQueue string) worker.Worker {
-	return worker.New(c, taskQueue, worker.Options{})
+//
+// Options are additive and optional — NewWorker(c, taskQueue) keeps the exact
+// pre-versioning behavior. See versioning.go for Worker Deployment Versioning
+// (MustVersioningFromEnv is the usual call).
+func NewWorker(c client.Client, taskQueue string, opts ...WorkerOption) worker.Worker {
+	options := worker.Options{}
+	for _, opt := range opts {
+		if opt == nil {
+			// VersioningFromEnv returns (nil, err); a caller who ignored the
+			// error lands here. Skipping instead would build an UNVERSIONED
+			// worker, which is the failure class this package exists to prevent.
+			panic("temporalx.NewWorker: nil WorkerOption — a VersioningFromEnv error was ignored")
+		}
+		opt(&options)
+	}
+	// Resolve the option set as a whole rather than per option, so order cannot
+	// change the worker and no half-configured combination reaches the SDK.
+	normalizeVersioning(&options)
+	return worker.New(c, taskQueue, options)
 }
 
 // logMetricsError replaces the Temporal SDK's default OnError (panic): an
