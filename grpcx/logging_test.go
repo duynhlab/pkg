@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -58,28 +59,70 @@ func TestAccessLogUnary_OKLogsInfo(t *testing.T) {
 	}
 }
 
-func TestAccessLogUnary_ErrorLogsErrorLevelWithCode(t *testing.T) {
-	logger, logs := obsLogger()
-	interceptor := accessLogUnary(logger)
+// The access-log level follows the status code's CLASS, per the gRPC
+// ecosystem's server-side convention (go-grpc-middleware DefaultServerCodeToLevel).
+// The distinction is who the line is FOR: Info is an outcome the server produced
+// correctly (a NotFound answered a real question — asking is the caller's
+// business); Warn is degraded-but-explicable; Error means this process, or the
+// platform under it, failed and someone should look. Before this policy every
+// non-OK code logged at Error with a stacktrace, so one reconciler probing
+// missing reservations wrote an incident's worth of noise per day and a real
+// Internal drowned in it.
+func TestAccessLogUnary_LevelFollowsTheCodeClass(t *testing.T) {
+	for _, tc := range []struct {
+		code codes.Code
+		want zapcore.Level
+	}{
+		{codes.OK, zap.InfoLevel},
+		{codes.NotFound, zap.InfoLevel},
+		{codes.Canceled, zap.InfoLevel},
+		{codes.AlreadyExists, zap.InfoLevel},
+		{codes.InvalidArgument, zap.InfoLevel},
+		{codes.Unauthenticated, zap.InfoLevel},
+		{codes.DeadlineExceeded, zap.WarnLevel},
+		{codes.PermissionDenied, zap.WarnLevel},
+		{codes.ResourceExhausted, zap.WarnLevel},
+		{codes.FailedPrecondition, zap.WarnLevel},
+		{codes.Aborted, zap.WarnLevel},
+		{codes.OutOfRange, zap.WarnLevel},
+		{codes.Unavailable, zap.WarnLevel},
+		{codes.Unknown, zap.ErrorLevel},
+		{codes.Unimplemented, zap.ErrorLevel},
+		{codes.Internal, zap.ErrorLevel},
+		{codes.DataLoss, zap.ErrorLevel},
+	} {
+		t.Run(tc.code.String(), func(t *testing.T) {
+			logger, logs := obsLogger()
+			interceptor := accessLogUnary(logger)
 
-	info := &grpc.UnaryServerInfo{FullMethod: "/product.v1.ProductService/GetProduct"}
-	_, err := interceptor(context.Background(), nil, info,
-		func(context.Context, any) (any, error) {
-			return nil, status.Error(codes.NotFound, "missing")
+			info := &grpc.UnaryServerInfo{FullMethod: "/product.v1.ProductService/GetProduct"}
+			_, _ = interceptor(context.Background(), nil, info,
+				func(context.Context, any) (any, error) {
+					if tc.code == codes.OK {
+						return "ok", nil
+					}
+					return nil, status.Error(tc.code, "outcome")
+				})
+
+			entries := logs.All()
+			if len(entries) != 1 {
+				t.Fatalf("want 1 log entry, got %d", len(entries))
+			}
+			if entries[0].Level != tc.want {
+				t.Errorf("level for %s = %v, want %v", tc.code, entries[0].Level, tc.want)
+			}
+			if got := entries[0].ContextMap()["code"]; got != tc.code.String() {
+				t.Errorf("code field = %v, want %s", got, tc.code)
+			}
 		})
-	if status.Code(err) != codes.NotFound {
-		t.Fatalf("code = %v, want NotFound", status.Code(err))
 	}
+}
 
-	entries := logs.All()
-	if len(entries) != 1 {
-		t.Fatalf("want 1 log entry, got %d", len(entries))
-	}
-	if entries[0].Level != zap.ErrorLevel {
-		t.Errorf("level = %v, want Error", entries[0].Level)
-	}
-	if entries[0].ContextMap()["code"] != "NotFound" {
-		t.Errorf("code = %v, want NotFound", entries[0].ContextMap()["code"])
+// A code this build does not know is a fault by definition — new codes must
+// surface loudly, not inherit a quiet default.
+func TestCodeLevel_UnknownCodeIsError(t *testing.T) {
+	if got := codeLevel(codes.Code(99)); got != zapcore.ErrorLevel {
+		t.Errorf("codeLevel(99) = %v, want Error", got)
 	}
 }
 
