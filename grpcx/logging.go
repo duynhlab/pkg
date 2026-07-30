@@ -24,6 +24,36 @@ func isInfraMethod(fullMethod string) bool {
 		strings.HasPrefix(fullMethod, "/grpc.reflection.")
 }
 
+// codeLevel maps a status code to the access-log level, following the gRPC
+// ecosystem's server-side convention (go-grpc-middleware
+// logging.DefaultServerCodeToLevel) verbatim. The class distinction is who the
+// line is FOR:
+//
+//   - Info: the server answered correctly; the outcome belongs to the caller.
+//     A NotFound or InvalidArgument is a question answered, not a fault — the
+//     old blanket non-OK=Error policy meant one loop probing missing rows wrote
+//     an incident's worth of stacktraces per day, and every real Internal had
+//     to be found inside that noise.
+//   - Warn: degraded but explicable — quota, contention, a precondition that
+//     did not hold, a dependency refusing. Worth a trend line, not a page.
+//   - Error: this process (or the platform under it) failed; someone looks.
+//
+// The default is Error, not Info: a code this build does not know is a fault
+// by definition, and new codes must surface loudly rather than inherit quiet.
+func codeLevel(code codes.Code) zapcore.Level {
+	switch code {
+	case codes.OK, codes.NotFound, codes.Canceled, codes.AlreadyExists,
+		codes.InvalidArgument, codes.Unauthenticated:
+		return zapcore.InfoLevel
+	case codes.DeadlineExceeded, codes.PermissionDenied, codes.ResourceExhausted,
+		codes.FailedPrecondition, codes.Aborted, codes.OutOfRange, codes.Unavailable:
+		return zapcore.WarnLevel
+	case codes.Unknown, codes.Unimplemented, codes.Internal, codes.DataLoss:
+		return zapcore.ErrorLevel
+	}
+	return zapcore.ErrorLevel
+}
+
 // peerAddr returns the client address from ctx, or "" when unavailable. It is
 // the gRPC analog of the HTTP access log's client_ip field.
 func peerAddr(ctx context.Context) string {
@@ -34,8 +64,8 @@ func peerAddr(ctx context.Context) string {
 }
 
 // accessLogUnary logs one line per incoming unary RPC, the gRPC counterpart of
-// the HTTP LoggingMiddleware: OK calls at Info, everything else at Error, with
-// the trace_id so a log line joins the same trace as its span. Health and
+// the HTTP LoggingMiddleware: level follows the status code's class (see
+// codeLevel), with the trace_id so a log line joins the same trace as its span. Health and
 // reflection RPCs are skipped (isInfraMethod). A nil logger disables logging
 // (the interceptor still forwards the call).
 func accessLogUnary(logger *zap.Logger) grpc.UnaryServerInterceptor {
@@ -87,11 +117,7 @@ func accessLogStream(logger *zap.Logger) grpc.StreamServerInterceptor {
 // outcome filtering therefore keys on trace_id, not a shared status field.
 func logRPC(ctx context.Context, logger *zap.Logger, method string, err error, d time.Duration) {
 	code := status.Code(err)
-	level := zapcore.InfoLevel
-	if code != codes.OK {
-		level = zapcore.ErrorLevel
-	}
-	logger.Log(level, "gRPC request",
+	logger.Log(codeLevel(code), "gRPC request",
 		zap.String("trace_id", obsx.TraceIDFromContext(ctx)),
 		zap.String("method", method),
 		zap.String("code", code.String()),
