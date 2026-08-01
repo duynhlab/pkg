@@ -30,8 +30,11 @@ service PaymentService {
   // voiding an already-voided payment succeeds.
   rpc Void(VoidRequest) returns (VoidResponse);
 
-  // Refund returns captured money (compensation once captured). Idempotent by the
-  // order (server key refund:{order_id}) — a retry returns the same refund.
+  // Refund returns captured money (compensation once captured). Idempotent by
+  // the refund REQUEST (server key refund:{order_id}:{refund_request_id}) — a
+  // retry of the same request returns the same refund, while a distinct refund
+  // intent for the same order gets its own identity. An empty
+  // refund_request_id falls back to the legacy order-only key.
   rpc Refund(RefundRequest) returns (RefundResponse);
 
   // GetPayment returns the order's payment snapshot (read-only). The caller is
@@ -61,6 +64,14 @@ message RefundRequest {
   int64 order_id = 1;
   int64 amount_minor = 2; // amount to refund in minor units
   string reason = 3;
+  // refund_request_id names THIS refund request, not the order. Keying refund
+  // idempotency on the order alone gives an order exactly one refund identity
+  // for its whole life, so a second legitimate refund (a compensation refund
+  // and a later cancellation refunding the remainder) collides with the first
+  // and is rejected instead of paid. Callers send a stable id per distinct
+  // refund intent; empty keeps the legacy order-only identity for callers that
+  // have not been updated (RFC-0021 phase 6).
+  string refund_request_id = 4;
 }
 
 message GetPaymentRequest {

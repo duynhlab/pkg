@@ -186,12 +186,20 @@ func (x *VoidRequest) GetOrderId() int64 {
 }
 
 type RefundRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	OrderId       int64                  `protobuf:"varint,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
-	AmountMinor   int64                  `protobuf:"varint,2,opt,name=amount_minor,json=amountMinor,proto3" json:"amount_minor,omitempty"` // amount to refund in minor units
-	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	OrderId     int64                  `protobuf:"varint,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
+	AmountMinor int64                  `protobuf:"varint,2,opt,name=amount_minor,json=amountMinor,proto3" json:"amount_minor,omitempty"` // amount to refund in minor units
+	Reason      string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	// refund_request_id names THIS refund request, not the order. Keying refund
+	// idempotency on the order alone gives an order exactly one refund identity
+	// for its whole life, so a second legitimate refund (a compensation refund
+	// and a later cancellation refunding the remainder) collides with the first
+	// and is rejected instead of paid. Callers send a stable id per distinct
+	// refund intent; empty keeps the legacy order-only identity for callers that
+	// have not been updated (RFC-0021 phase 6).
+	RefundRequestId string `protobuf:"bytes,4,opt,name=refund_request_id,json=refundRequestId,proto3" json:"refund_request_id,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *RefundRequest) Reset() {
@@ -241,6 +249,13 @@ func (x *RefundRequest) GetAmountMinor() int64 {
 func (x *RefundRequest) GetReason() string {
 	if x != nil {
 		return x.Reason
+	}
+	return ""
+}
+
+func (x *RefundRequest) GetRefundRequestId() string {
+	if x != nil {
+		return x.RefundRequestId
 	}
 	return ""
 }
@@ -693,11 +708,12 @@ const file_payment_v1_payment_proto_rawDesc = "" +
 	"\x0eCaptureRequest\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\x03R\aorderId\"(\n" +
 	"\vVoidRequest\x12\x19\n" +
-	"\border_id\x18\x01 \x01(\x03R\aorderId\"e\n" +
+	"\border_id\x18\x01 \x01(\x03R\aorderId\"\x91\x01\n" +
 	"\rRefundRequest\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\x03R\aorderId\x12!\n" +
 	"\famount_minor\x18\x02 \x01(\x03R\vamountMinor\x12\x16\n" +
-	"\x06reason\x18\x03 \x01(\tR\x06reason\".\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\x12*\n" +
+	"\x11refund_request_id\x18\x04 \x01(\tR\x0frefundRequestId\".\n" +
 	"\x11GetPaymentRequest\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\x03R\aorderId\"\xe4\x01\n" +
 	"\aPayment\x12\x1d\n" +
