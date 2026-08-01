@@ -53,8 +53,11 @@ type PaymentServiceClient interface {
 	// Void releases the authorized hold (compensation for Authorize). Idempotent:
 	// voiding an already-voided payment succeeds.
 	Void(ctx context.Context, in *VoidRequest, opts ...grpc.CallOption) (*VoidResponse, error)
-	// Refund returns captured money (compensation once captured). Idempotent by the
-	// order (server key refund:{order_id}) — a retry returns the same refund.
+	// Refund returns captured money (compensation once captured). Idempotent by
+	// the refund REQUEST (server key refund:{order_id}:{refund_request_id}) — a
+	// retry of the same request returns the same refund, while a distinct refund
+	// intent for the same order gets its own identity. An empty
+	// refund_request_id falls back to the legacy order-only key.
 	Refund(ctx context.Context, in *RefundRequest, opts ...grpc.CallOption) (*RefundResponse, error)
 	// GetPayment returns the order's payment snapshot (read-only). The caller is
 	// expected to have owner-scoped the order already — this internal surface
@@ -148,8 +151,11 @@ type PaymentServiceServer interface {
 	// Void releases the authorized hold (compensation for Authorize). Idempotent:
 	// voiding an already-voided payment succeeds.
 	Void(context.Context, *VoidRequest) (*VoidResponse, error)
-	// Refund returns captured money (compensation once captured). Idempotent by the
-	// order (server key refund:{order_id}) — a retry returns the same refund.
+	// Refund returns captured money (compensation once captured). Idempotent by
+	// the refund REQUEST (server key refund:{order_id}:{refund_request_id}) — a
+	// retry of the same request returns the same refund, while a distinct refund
+	// intent for the same order gets its own identity. An empty
+	// refund_request_id falls back to the legacy order-only key.
 	Refund(context.Context, *RefundRequest) (*RefundResponse, error)
 	// GetPayment returns the order's payment snapshot (read-only). The caller is
 	// expected to have owner-scoped the order already — this internal surface
