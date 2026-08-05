@@ -19,8 +19,6 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ProductService_ReserveStock_FullMethodName          = "/product.v1.ProductService/ReserveStock"
-	ProductService_ReleaseStock_FullMethodName          = "/product.v1.ProductService/ReleaseStock"
 	ProductService_GetProducts_FullMethodName           = "/product.v1.ProductService/GetProducts"
 	ProductService_BatchGetCurrentPrices_FullMethodName = "/product.v1.ProductService/BatchGetCurrentPrices"
 )
@@ -30,20 +28,15 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
 // ProductService is the internal (east-west) contract for the product service.
-// It exposes inventory operations used by the order-fulfillment saga
-// (see homelab/docs/api/temporal-order-fulfillment.md). These close
-// the long-standing inventory TODO in the synchronous checkout path.
+// It is a READ contract: price and catalog answers for checkout.
+//
+// The stock write operations it used to expose (ReserveStock / ReleaseStock) were
+// REMOVED in RFC-0021 phase 4. Stock lives at inventory-service
+// (inventory.v1.InventoryService), and no caller of these remained: the order
+// saga's product branch was deleted in order 1.13.0 and checkout's availability
+// read moved to inventory at W8. Field numbers are not reused — the messages go
+// with the RPCs, so nothing can be silently rebound to a different meaning.
 type ProductServiceClient interface {
-	// ReserveStock atomically decrements stock for every line item (step 1 of the
-	// saga). It is all-or-nothing: if any item has insufficient stock, nothing is
-	// reserved and the call fails with FAILED_PRECONDITION. Idempotent by
-	// reservation_id (the order ID) so a Temporal activity retry does not
-	// double-decrement.
-	ReserveStock(ctx context.Context, in *ReserveStockRequest, opts ...grpc.CallOption) (*ReserveStockResponse, error)
-	// ReleaseStock returns previously reserved stock (the saga compensation for
-	// ReserveStock). Idempotent by reservation_id: releasing an unknown or
-	// already-released reservation succeeds, so compensation is safe to retry.
-	ReleaseStock(ctx context.Context, in *ReleaseStockRequest, opts ...grpc.CallOption) (*ReleaseStockResponse, error)
 	// GetProducts is a batch price/availability read used by checkout
 	// re-validation (RFC-0015): product is the price authority at checkout
 	// time. Read-only; the response omits unknown ids rather than erroring.
@@ -62,26 +55,6 @@ type productServiceClient struct {
 
 func NewProductServiceClient(cc grpc.ClientConnInterface) ProductServiceClient {
 	return &productServiceClient{cc}
-}
-
-func (c *productServiceClient) ReserveStock(ctx context.Context, in *ReserveStockRequest, opts ...grpc.CallOption) (*ReserveStockResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ReserveStockResponse)
-	err := c.cc.Invoke(ctx, ProductService_ReserveStock_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *productServiceClient) ReleaseStock(ctx context.Context, in *ReleaseStockRequest, opts ...grpc.CallOption) (*ReleaseStockResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ReleaseStockResponse)
-	err := c.cc.Invoke(ctx, ProductService_ReleaseStock_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *productServiceClient) GetProducts(ctx context.Context, in *GetProductsRequest, opts ...grpc.CallOption) (*GetProductsResponse, error) {
@@ -109,20 +82,15 @@ func (c *productServiceClient) BatchGetCurrentPrices(ctx context.Context, in *Ba
 // for forward compatibility.
 //
 // ProductService is the internal (east-west) contract for the product service.
-// It exposes inventory operations used by the order-fulfillment saga
-// (see homelab/docs/api/temporal-order-fulfillment.md). These close
-// the long-standing inventory TODO in the synchronous checkout path.
+// It is a READ contract: price and catalog answers for checkout.
+//
+// The stock write operations it used to expose (ReserveStock / ReleaseStock) were
+// REMOVED in RFC-0021 phase 4. Stock lives at inventory-service
+// (inventory.v1.InventoryService), and no caller of these remained: the order
+// saga's product branch was deleted in order 1.13.0 and checkout's availability
+// read moved to inventory at W8. Field numbers are not reused — the messages go
+// with the RPCs, so nothing can be silently rebound to a different meaning.
 type ProductServiceServer interface {
-	// ReserveStock atomically decrements stock for every line item (step 1 of the
-	// saga). It is all-or-nothing: if any item has insufficient stock, nothing is
-	// reserved and the call fails with FAILED_PRECONDITION. Idempotent by
-	// reservation_id (the order ID) so a Temporal activity retry does not
-	// double-decrement.
-	ReserveStock(context.Context, *ReserveStockRequest) (*ReserveStockResponse, error)
-	// ReleaseStock returns previously reserved stock (the saga compensation for
-	// ReserveStock). Idempotent by reservation_id: releasing an unknown or
-	// already-released reservation succeeds, so compensation is safe to retry.
-	ReleaseStock(context.Context, *ReleaseStockRequest) (*ReleaseStockResponse, error)
 	// GetProducts is a batch price/availability read used by checkout
 	// re-validation (RFC-0015): product is the price authority at checkout
 	// time. Read-only; the response omits unknown ids rather than erroring.
@@ -143,12 +111,6 @@ type ProductServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedProductServiceServer struct{}
 
-func (UnimplementedProductServiceServer) ReserveStock(context.Context, *ReserveStockRequest) (*ReserveStockResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ReserveStock not implemented")
-}
-func (UnimplementedProductServiceServer) ReleaseStock(context.Context, *ReleaseStockRequest) (*ReleaseStockResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ReleaseStock not implemented")
-}
 func (UnimplementedProductServiceServer) GetProducts(context.Context, *GetProductsRequest) (*GetProductsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetProducts not implemented")
 }
@@ -174,42 +136,6 @@ func RegisterProductServiceServer(s grpc.ServiceRegistrar, srv ProductServiceSer
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&ProductService_ServiceDesc, srv)
-}
-
-func _ProductService_ReserveStock_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ReserveStockRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ProductServiceServer).ReserveStock(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ProductService_ReserveStock_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ProductServiceServer).ReserveStock(ctx, req.(*ReserveStockRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _ProductService_ReleaseStock_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ReleaseStockRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ProductServiceServer).ReleaseStock(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ProductService_ReleaseStock_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ProductServiceServer).ReleaseStock(ctx, req.(*ReleaseStockRequest))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _ProductService_GetProducts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -255,14 +181,6 @@ var ProductService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "product.v1.ProductService",
 	HandlerType: (*ProductServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "ReserveStock",
-			Handler:    _ProductService_ReserveStock_Handler,
-		},
-		{
-			MethodName: "ReleaseStock",
-			Handler:    _ProductService_ReleaseStock_Handler,
-		},
 		{
 			MethodName: "GetProducts",
 			Handler:    _ProductService_GetProducts_Handler,
