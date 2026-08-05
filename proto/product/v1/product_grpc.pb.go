@@ -19,7 +19,6 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ProductService_GetProducts_FullMethodName           = "/product.v1.ProductService/GetProducts"
 	ProductService_BatchGetCurrentPrices_FullMethodName = "/product.v1.ProductService/BatchGetCurrentPrices"
 )
 
@@ -30,22 +29,21 @@ const (
 // ProductService is the internal (east-west) contract for the product service.
 // It is a READ contract: price and catalog answers for checkout.
 //
-// The stock write operations it used to expose (ReserveStock / ReleaseStock) were
-// REMOVED in RFC-0021 phase 4. Stock lives at inventory-service
-// (inventory.v1.InventoryService), and no caller of these remained: the order
-// saga's product branch was deleted in order 1.13.0 and checkout's availability
-// read moved to inventory at W8. Field numbers are not reused — the messages go
-// with the RPCs, so nothing can be silently rebound to a different meaning.
+// RFC-0021 phase 4 finished emptying this contract of stock. Removed, in order:
+// the write operations (ReserveStock / ReleaseStock), then GetProducts and its
+// ProductInfo — the last place product answered an availability question, via
+// available_qty read from a column frozen at the write cutover.
+//
+// The expand → migrate → contract for that read completed as designed:
+// BatchGetCurrentPrices was added as the price-only successor, checkout migrated
+// to it plus inventory.v1/CheckAvailability, and only then did the predecessor
+// go. Field numbers are not reused, and the messages go with the RPCs, so
+// nothing can be silently rebound to a different meaning.
 type ProductServiceClient interface {
-	// GetProducts is a batch price/availability read used by checkout
-	// re-validation (RFC-0015): product is the price authority at checkout
-	// time. Read-only; the response omits unknown ids rather than erroring.
-	GetProducts(ctx context.Context, in *GetProductsRequest, opts ...grpc.CallOption) (*GetProductsResponse, error)
-	// BatchGetCurrentPrices is the price-only successor to GetProducts
-	// (RFC-0021: availability moves to inventory.v1). DB-truth — it bypasses
-	// the browsing cache like GetProducts does. Read-only; the response omits
-	// unknown SKUs rather than erroring. GetProducts stays untouched until its
-	// callers migrate (expand → migrate → contract).
+	// BatchGetCurrentPrices is the price authority for checkout re-validation.
+	// DB-truth — it bypasses the browsing cache. Read-only; the response omits
+	// unknown SKUs rather than erroring, and carries NO availability: stock is
+	// inventory.v1's answer.
 	BatchGetCurrentPrices(ctx context.Context, in *BatchGetCurrentPricesRequest, opts ...grpc.CallOption) (*BatchGetCurrentPricesResponse, error)
 }
 
@@ -55,16 +53,6 @@ type productServiceClient struct {
 
 func NewProductServiceClient(cc grpc.ClientConnInterface) ProductServiceClient {
 	return &productServiceClient{cc}
-}
-
-func (c *productServiceClient) GetProducts(ctx context.Context, in *GetProductsRequest, opts ...grpc.CallOption) (*GetProductsResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetProductsResponse)
-	err := c.cc.Invoke(ctx, ProductService_GetProducts_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *productServiceClient) BatchGetCurrentPrices(ctx context.Context, in *BatchGetCurrentPricesRequest, opts ...grpc.CallOption) (*BatchGetCurrentPricesResponse, error) {
@@ -84,22 +72,21 @@ func (c *productServiceClient) BatchGetCurrentPrices(ctx context.Context, in *Ba
 // ProductService is the internal (east-west) contract for the product service.
 // It is a READ contract: price and catalog answers for checkout.
 //
-// The stock write operations it used to expose (ReserveStock / ReleaseStock) were
-// REMOVED in RFC-0021 phase 4. Stock lives at inventory-service
-// (inventory.v1.InventoryService), and no caller of these remained: the order
-// saga's product branch was deleted in order 1.13.0 and checkout's availability
-// read moved to inventory at W8. Field numbers are not reused — the messages go
-// with the RPCs, so nothing can be silently rebound to a different meaning.
+// RFC-0021 phase 4 finished emptying this contract of stock. Removed, in order:
+// the write operations (ReserveStock / ReleaseStock), then GetProducts and its
+// ProductInfo — the last place product answered an availability question, via
+// available_qty read from a column frozen at the write cutover.
+//
+// The expand → migrate → contract for that read completed as designed:
+// BatchGetCurrentPrices was added as the price-only successor, checkout migrated
+// to it plus inventory.v1/CheckAvailability, and only then did the predecessor
+// go. Field numbers are not reused, and the messages go with the RPCs, so
+// nothing can be silently rebound to a different meaning.
 type ProductServiceServer interface {
-	// GetProducts is a batch price/availability read used by checkout
-	// re-validation (RFC-0015): product is the price authority at checkout
-	// time. Read-only; the response omits unknown ids rather than erroring.
-	GetProducts(context.Context, *GetProductsRequest) (*GetProductsResponse, error)
-	// BatchGetCurrentPrices is the price-only successor to GetProducts
-	// (RFC-0021: availability moves to inventory.v1). DB-truth — it bypasses
-	// the browsing cache like GetProducts does. Read-only; the response omits
-	// unknown SKUs rather than erroring. GetProducts stays untouched until its
-	// callers migrate (expand → migrate → contract).
+	// BatchGetCurrentPrices is the price authority for checkout re-validation.
+	// DB-truth — it bypasses the browsing cache. Read-only; the response omits
+	// unknown SKUs rather than erroring, and carries NO availability: stock is
+	// inventory.v1's answer.
 	BatchGetCurrentPrices(context.Context, *BatchGetCurrentPricesRequest) (*BatchGetCurrentPricesResponse, error)
 	mustEmbedUnimplementedProductServiceServer()
 }
@@ -111,9 +98,6 @@ type ProductServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedProductServiceServer struct{}
 
-func (UnimplementedProductServiceServer) GetProducts(context.Context, *GetProductsRequest) (*GetProductsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetProducts not implemented")
-}
 func (UnimplementedProductServiceServer) BatchGetCurrentPrices(context.Context, *BatchGetCurrentPricesRequest) (*BatchGetCurrentPricesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method BatchGetCurrentPrices not implemented")
 }
@@ -136,24 +120,6 @@ func RegisterProductServiceServer(s grpc.ServiceRegistrar, srv ProductServiceSer
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&ProductService_ServiceDesc, srv)
-}
-
-func _ProductService_GetProducts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetProductsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ProductServiceServer).GetProducts(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ProductService_GetProducts_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ProductServiceServer).GetProducts(ctx, req.(*GetProductsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _ProductService_BatchGetCurrentPrices_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -181,10 +147,6 @@ var ProductService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "product.v1.ProductService",
 	HandlerType: (*ProductServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "GetProducts",
-			Handler:    _ProductService_GetProducts_Handler,
-		},
 		{
 			MethodName: "BatchGetCurrentPrices",
 			Handler:    _ProductService_BatchGetCurrentPrices_Handler,

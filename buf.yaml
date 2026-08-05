@@ -7,3 +7,15 @@ lint:
 breaking:
   use:
     - FILE
+  # TEMPORARY, removed in the immediate follow-up PR — same two-step as the
+  # ReserveStock/ReleaseStock removal, and for the same reason: the check is
+  # CORRECT to flag a deliberate contract removal, so the answer is "yes, we mean
+  # it" rather than a rule change.
+  #
+  # Honest about the blast radius: while this is here, ANY rpc or message deletion
+  # in product.proto passes. It is scoped to a file, not to this change. On main
+  # the comparison no longer sees these symbols, at which point the block would
+  # stop being a concession and become a hole.
+  ignore_only:
+    RPC_NO_DELETE: [proto/product/v1/product.proto]
+    MESSAGE_NO_DELETE: [proto/product/v1/product.proto]
