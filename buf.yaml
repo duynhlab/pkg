@@ -7,18 +7,3 @@ lint:
 breaking:
   use:
     - FILE
-  # TEMPORARY. It MUST be removed in the immediate follow-up PR.
-  #
-  # RFC-0021 phase 4 deletes product.v1's stock write RPCs on purpose, so the
-  # breaking check is correct and the answer is "yes, we mean it" rather than a
-  # rule change.
-  #
-  # Be clear about what this does NOT protect: while it is here, ANY rpc or
-  # message deletion in product.proto passes — verified by deleting GetProducts
-  # locally and watching the check stay green. It is scoped to one file, not to
-  # this change. That is exactly why it does not get to live here: on main the
-  # comparison no longer sees the old RPCs, so the block stops being a
-  # concession and becomes a hole.
-  ignore_only:
-    RPC_NO_DELETE: [proto/product/v1/product.proto]
-    MESSAGE_NO_DELETE: [proto/product/v1/product.proto]
