@@ -21,169 +21,6 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// GetProductsRequest asks for a batch of products by id.
-type GetProductsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ProductIds    []string               `protobuf:"bytes,1,rep,name=product_ids,json=productIds,proto3" json:"product_ids,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *GetProductsRequest) Reset() {
-	*x = GetProductsRequest{}
-	mi := &file_product_v1_product_proto_msgTypes[0]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GetProductsRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GetProductsRequest) ProtoMessage() {}
-
-func (x *GetProductsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_product_v1_product_proto_msgTypes[0]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GetProductsRequest.ProtoReflect.Descriptor instead.
-func (*GetProductsRequest) Descriptor() ([]byte, []int) {
-	return file_product_v1_product_proto_rawDescGZIP(), []int{0}
-}
-
-func (x *GetProductsRequest) GetProductIds() []string {
-	if x != nil {
-		return x.ProductIds
-	}
-	return nil
-}
-
-// ProductInfo is the price/availability view checkout validates against.
-type ProductInfo struct {
-	state     protoimpl.MessageState `protogen:"open.v1"`
-	ProductId string                 `protobuf:"bytes,1,opt,name=product_id,json=productId,proto3" json:"product_id,omitempty"`
-	Name      string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	// price_minor is the current catalog unit price in int64 minor units — the
-	// platform money representation (RFC-0010 P3). The catalog's float price is
-	// rounded to cents at this boundary, once, by the product server.
-	PriceMinor    int64 `protobuf:"varint,3,opt,name=price_minor,json=priceMinor,proto3" json:"price_minor,omitempty"`
-	AvailableQty  int32 `protobuf:"varint,4,opt,name=available_qty,json=availableQty,proto3" json:"available_qty,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ProductInfo) Reset() {
-	*x = ProductInfo{}
-	mi := &file_product_v1_product_proto_msgTypes[1]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ProductInfo) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ProductInfo) ProtoMessage() {}
-
-func (x *ProductInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_product_v1_product_proto_msgTypes[1]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ProductInfo.ProtoReflect.Descriptor instead.
-func (*ProductInfo) Descriptor() ([]byte, []int) {
-	return file_product_v1_product_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *ProductInfo) GetProductId() string {
-	if x != nil {
-		return x.ProductId
-	}
-	return ""
-}
-
-func (x *ProductInfo) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *ProductInfo) GetPriceMinor() int64 {
-	if x != nil {
-		return x.PriceMinor
-	}
-	return 0
-}
-
-func (x *ProductInfo) GetAvailableQty() int32 {
-	if x != nil {
-		return x.AvailableQty
-	}
-	return 0
-}
-
-// GetProductsResponse contains only the requested ids that exist; callers
-// treat a missing id as "product gone" and fail their validation.
-type GetProductsResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Products      []*ProductInfo         `protobuf:"bytes,1,rep,name=products,proto3" json:"products,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *GetProductsResponse) Reset() {
-	*x = GetProductsResponse{}
-	mi := &file_product_v1_product_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GetProductsResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GetProductsResponse) ProtoMessage() {}
-
-func (x *GetProductsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_product_v1_product_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GetProductsResponse.ProtoReflect.Descriptor instead.
-func (*GetProductsResponse) Descriptor() ([]byte, []int) {
-	return file_product_v1_product_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *GetProductsResponse) GetProducts() []*ProductInfo {
-	if x != nil {
-		return x.Products
-	}
-	return nil
-}
-
 // BatchGetCurrentPricesRequest asks for current prices by SKU. sku_id matches
 // inventory.v1 identity (one product = one SKU initially, sku_id = product id).
 type BatchGetCurrentPricesRequest struct {
@@ -195,7 +32,7 @@ type BatchGetCurrentPricesRequest struct {
 
 func (x *BatchGetCurrentPricesRequest) Reset() {
 	*x = BatchGetCurrentPricesRequest{}
-	mi := &file_product_v1_product_proto_msgTypes[3]
+	mi := &file_product_v1_product_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -207,7 +44,7 @@ func (x *BatchGetCurrentPricesRequest) String() string {
 func (*BatchGetCurrentPricesRequest) ProtoMessage() {}
 
 func (x *BatchGetCurrentPricesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_product_v1_product_proto_msgTypes[3]
+	mi := &file_product_v1_product_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -220,7 +57,7 @@ func (x *BatchGetCurrentPricesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchGetCurrentPricesRequest.ProtoReflect.Descriptor instead.
 func (*BatchGetCurrentPricesRequest) Descriptor() ([]byte, []int) {
-	return file_product_v1_product_proto_rawDescGZIP(), []int{3}
+	return file_product_v1_product_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *BatchGetCurrentPricesRequest) GetSkuIds() []string {
@@ -251,7 +88,7 @@ type CurrentPrice struct {
 
 func (x *CurrentPrice) Reset() {
 	*x = CurrentPrice{}
-	mi := &file_product_v1_product_proto_msgTypes[4]
+	mi := &file_product_v1_product_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -263,7 +100,7 @@ func (x *CurrentPrice) String() string {
 func (*CurrentPrice) ProtoMessage() {}
 
 func (x *CurrentPrice) ProtoReflect() protoreflect.Message {
-	mi := &file_product_v1_product_proto_msgTypes[4]
+	mi := &file_product_v1_product_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -276,7 +113,7 @@ func (x *CurrentPrice) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CurrentPrice.ProtoReflect.Descriptor instead.
 func (*CurrentPrice) Descriptor() ([]byte, []int) {
-	return file_product_v1_product_proto_rawDescGZIP(), []int{4}
+	return file_product_v1_product_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *CurrentPrice) GetSkuId() string {
@@ -325,7 +162,7 @@ type BatchGetCurrentPricesResponse struct {
 
 func (x *BatchGetCurrentPricesResponse) Reset() {
 	*x = BatchGetCurrentPricesResponse{}
-	mi := &file_product_v1_product_proto_msgTypes[5]
+	mi := &file_product_v1_product_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -337,7 +174,7 @@ func (x *BatchGetCurrentPricesResponse) String() string {
 func (*BatchGetCurrentPricesResponse) ProtoMessage() {}
 
 func (x *BatchGetCurrentPricesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_product_v1_product_proto_msgTypes[5]
+	mi := &file_product_v1_product_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -350,7 +187,7 @@ func (x *BatchGetCurrentPricesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchGetCurrentPricesResponse.ProtoReflect.Descriptor instead.
 func (*BatchGetCurrentPricesResponse) Descriptor() ([]byte, []int) {
-	return file_product_v1_product_proto_rawDescGZIP(), []int{5}
+	return file_product_v1_product_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *BatchGetCurrentPricesResponse) GetPrices() []*CurrentPrice {
@@ -365,19 +202,7 @@ var File_product_v1_product_proto protoreflect.FileDescriptor
 const file_product_v1_product_proto_rawDesc = "" +
 	"\n" +
 	"\x18product/v1/product.proto\x12\n" +
-	"product.v1\"5\n" +
-	"\x12GetProductsRequest\x12\x1f\n" +
-	"\vproduct_ids\x18\x01 \x03(\tR\n" +
-	"productIds\"\x86\x01\n" +
-	"\vProductInfo\x12\x1d\n" +
-	"\n" +
-	"product_id\x18\x01 \x01(\tR\tproductId\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1f\n" +
-	"\vprice_minor\x18\x03 \x01(\x03R\n" +
-	"priceMinor\x12#\n" +
-	"\ravailable_qty\x18\x04 \x01(\x05R\favailableQty\"J\n" +
-	"\x13GetProductsResponse\x123\n" +
-	"\bproducts\x18\x01 \x03(\v2\x17.product.v1.ProductInfoR\bproducts\"7\n" +
+	"product.v1\"7\n" +
 	"\x1cBatchGetCurrentPricesRequest\x12\x17\n" +
 	"\asku_ids\x18\x01 \x03(\tR\x06skuIds\"\x92\x01\n" +
 	"\fCurrentPrice\x12\x15\n" +
@@ -388,9 +213,8 @@ const file_product_v1_product_proto_rawDesc = "" +
 	"\bcurrency\x18\x04 \x01(\tR\bcurrency\x12\x1a\n" +
 	"\bsellable\x18\x05 \x01(\bR\bsellable\"Q\n" +
 	"\x1dBatchGetCurrentPricesResponse\x120\n" +
-	"\x06prices\x18\x01 \x03(\v2\x18.product.v1.CurrentPriceR\x06prices2\xce\x01\n" +
-	"\x0eProductService\x12N\n" +
-	"\vGetProducts\x12\x1e.product.v1.GetProductsRequest\x1a\x1f.product.v1.GetProductsResponse\x12l\n" +
+	"\x06prices\x18\x01 \x03(\v2\x18.product.v1.CurrentPriceR\x06prices2~\n" +
+	"\x0eProductService\x12l\n" +
 	"\x15BatchGetCurrentPrices\x12(.product.v1.BatchGetCurrentPricesRequest\x1a).product.v1.BatchGetCurrentPricesResponseB\x9b\x01\n" +
 	"\x0ecom.product.v1B\fProductProtoP\x01Z2github.com/duynhlab/pkg/proto/product/v1;productv1\xa2\x02\x03PXX\xaa\x02\n" +
 	"Product.V1\xca\x02\n" +
@@ -408,27 +232,21 @@ func file_product_v1_product_proto_rawDescGZIP() []byte {
 	return file_product_v1_product_proto_rawDescData
 }
 
-var file_product_v1_product_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_product_v1_product_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_product_v1_product_proto_goTypes = []any{
-	(*GetProductsRequest)(nil),            // 0: product.v1.GetProductsRequest
-	(*ProductInfo)(nil),                   // 1: product.v1.ProductInfo
-	(*GetProductsResponse)(nil),           // 2: product.v1.GetProductsResponse
-	(*BatchGetCurrentPricesRequest)(nil),  // 3: product.v1.BatchGetCurrentPricesRequest
-	(*CurrentPrice)(nil),                  // 4: product.v1.CurrentPrice
-	(*BatchGetCurrentPricesResponse)(nil), // 5: product.v1.BatchGetCurrentPricesResponse
+	(*BatchGetCurrentPricesRequest)(nil),  // 0: product.v1.BatchGetCurrentPricesRequest
+	(*CurrentPrice)(nil),                  // 1: product.v1.CurrentPrice
+	(*BatchGetCurrentPricesResponse)(nil), // 2: product.v1.BatchGetCurrentPricesResponse
 }
 var file_product_v1_product_proto_depIdxs = []int32{
-	1, // 0: product.v1.GetProductsResponse.products:type_name -> product.v1.ProductInfo
-	4, // 1: product.v1.BatchGetCurrentPricesResponse.prices:type_name -> product.v1.CurrentPrice
-	0, // 2: product.v1.ProductService.GetProducts:input_type -> product.v1.GetProductsRequest
-	3, // 3: product.v1.ProductService.BatchGetCurrentPrices:input_type -> product.v1.BatchGetCurrentPricesRequest
-	2, // 4: product.v1.ProductService.GetProducts:output_type -> product.v1.GetProductsResponse
-	5, // 5: product.v1.ProductService.BatchGetCurrentPrices:output_type -> product.v1.BatchGetCurrentPricesResponse
-	4, // [4:6] is the sub-list for method output_type
-	2, // [2:4] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	1, // 0: product.v1.BatchGetCurrentPricesResponse.prices:type_name -> product.v1.CurrentPrice
+	0, // 1: product.v1.ProductService.BatchGetCurrentPrices:input_type -> product.v1.BatchGetCurrentPricesRequest
+	2, // 2: product.v1.ProductService.BatchGetCurrentPrices:output_type -> product.v1.BatchGetCurrentPricesResponse
+	2, // [2:3] is the sub-list for method output_type
+	1, // [1:2] is the sub-list for method input_type
+	1, // [1:1] is the sub-list for extension type_name
+	1, // [1:1] is the sub-list for extension extendee
+	0, // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_product_v1_product_proto_init() }
@@ -442,7 +260,7 @@ func file_product_v1_product_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_product_v1_product_proto_rawDesc), len(file_product_v1_product_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

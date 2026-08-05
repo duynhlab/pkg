@@ -7,51 +7,25 @@ option go_package = "github.com/duynhlab/pkg/proto/product/v1;productv1";
 // ProductService is the internal (east-west) contract for the product service.
 // It is a READ contract: price and catalog answers for checkout.
 //
-// The stock write operations it used to expose (ReserveStock / ReleaseStock) were
-// REMOVED in RFC-0021 phase 4. Stock lives at inventory-service
-// (inventory.v1.InventoryService), and no caller of these remained: the order
-// saga's product branch was deleted in order 1.13.0 and checkout's availability
-// read moved to inventory at W8. Field numbers are not reused — the messages go
-// with the RPCs, so nothing can be silently rebound to a different meaning.
+// RFC-0021 phase 4 finished emptying this contract of stock. Removed, in order:
+// the write operations (ReserveStock / ReleaseStock), then GetProducts and its
+// ProductInfo — the last place product answered an availability question, via
+// available_qty read from a column frozen at the write cutover.
+//
+// The expand → migrate → contract for that read completed as designed:
+// BatchGetCurrentPrices was added as the price-only successor, checkout migrated
+// to it plus inventory.v1/CheckAvailability, and only then did the predecessor
+// go. Field numbers are not reused, and the messages go with the RPCs, so
+// nothing can be silently rebound to a different meaning.
 service ProductService {
-  // GetProducts is a batch price/availability read used by checkout
-  // re-validation (RFC-0015): product is the price authority at checkout
-  // time. Read-only; the response omits unknown ids rather than erroring.
-  rpc GetProducts(GetProductsRequest) returns (GetProductsResponse);
-
-  // BatchGetCurrentPrices is the price-only successor to GetProducts
-  // (RFC-0021: availability moves to inventory.v1). DB-truth — it bypasses
-  // the browsing cache like GetProducts does. Read-only; the response omits
-  // unknown SKUs rather than erroring. GetProducts stays untouched until its
-  // callers migrate (expand → migrate → contract).
+  // BatchGetCurrentPrices is the price authority for checkout re-validation.
+  // DB-truth — it bypasses the browsing cache. Read-only; the response omits
+  // unknown SKUs rather than erroring, and carries NO availability: stock is
+  // inventory.v1's answer.
   rpc BatchGetCurrentPrices(BatchGetCurrentPricesRequest) returns (BatchGetCurrentPricesResponse);
 }
 
-// --- RFC-0015 additions: checkout re-validation reads ---
-
-// GetProductsRequest asks for a batch of products by id.
-message GetProductsRequest {
-  repeated string product_ids = 1;
-}
-
-// ProductInfo is the price/availability view checkout validates against.
-message ProductInfo {
-  string product_id = 1;
-  string name = 2;
-  // price_minor is the current catalog unit price in int64 minor units — the
-  // platform money representation (RFC-0010 P3). The catalog's float price is
-  // rounded to cents at this boundary, once, by the product server.
-  int64 price_minor = 3;
-  int32 available_qty = 4;
-}
-
-// GetProductsResponse contains only the requested ids that exist; callers
-// treat a missing id as "product gone" and fail their validation.
-message GetProductsResponse {
-  repeated ProductInfo products = 1;
-}
-
-// --- RFC-0021 additions: price-only checkout reads ---
+// --- RFC-0021: price-only checkout reads ---
 
 // BatchGetCurrentPricesRequest asks for current prices by SKU. sku_id matches
 // inventory.v1 identity (one product = one SKU initially, sku_id = product id).
