@@ -131,8 +131,29 @@ message Shortage {
 message CheckAvailabilityResponse {
   // True when one warehouse can fulfill every line right now.
   bool can_fulfill = 1;
-  // Empty when can_fulfill is true.
+  // Lines inventory knows about and cannot fulfill. Empty when can_fulfill is
+  // true. A shortage is a BUSINESS answer: the SKU is tracked, and this is
+  // genuinely how much of it exists.
   repeated Shortage shortages = 2;
+  // SKUs inventory does not track at all — no balance row in any warehouse.
+  //
+  // This is NOT a shortage and callers must not present it as one. Without this
+  // field the response could not tell the two apart: an untracked SKU fell out
+  // as a Shortage with available_to_promise = 0, which asserts "we have none of
+  // it" — a claim inventory cannot make about a SKU it has never heard of. The
+  // shopper was then told the item was unavailable when the real problem was
+  // missing data.
+  //
+  // can_fulfill is false whenever this is non-empty: an unknown SKU cannot be
+  // promised. But the correct caller behaviour differs from a shortage — this is
+  // a data problem, so fail CLOSED (a retryable error) rather than telling the
+  // customer to requote something that may well be in stock.
+  //
+  // Realistic since RFC-0021 phase 4: the phase-2 backfill from product was
+  // retired with the column it copied, so balances now arrive only from a seed or
+  // an explicit RECEIVE movement, and a catalog SKU with no balance row is an
+  // ordinary state rather than an impossible one.
+  repeated string unknown_sku_ids = 3;
 }
 
 message ReserveRequest {

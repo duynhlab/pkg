@@ -531,8 +531,29 @@ type CheckAvailabilityResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// True when one warehouse can fulfill every line right now.
 	CanFulfill bool `protobuf:"varint,1,opt,name=can_fulfill,json=canFulfill,proto3" json:"can_fulfill,omitempty"`
-	// Empty when can_fulfill is true.
-	Shortages     []*Shortage `protobuf:"bytes,2,rep,name=shortages,proto3" json:"shortages,omitempty"`
+	// Lines inventory knows about and cannot fulfill. Empty when can_fulfill is
+	// true. A shortage is a BUSINESS answer: the SKU is tracked, and this is
+	// genuinely how much of it exists.
+	Shortages []*Shortage `protobuf:"bytes,2,rep,name=shortages,proto3" json:"shortages,omitempty"`
+	// SKUs inventory does not track at all — no balance row in any warehouse.
+	//
+	// This is NOT a shortage and callers must not present it as one. Without this
+	// field the response could not tell the two apart: an untracked SKU fell out
+	// as a Shortage with available_to_promise = 0, which asserts "we have none of
+	// it" — a claim inventory cannot make about a SKU it has never heard of. The
+	// shopper was then told the item was unavailable when the real problem was
+	// missing data.
+	//
+	// can_fulfill is false whenever this is non-empty: an unknown SKU cannot be
+	// promised. But the correct caller behaviour differs from a shortage — this is
+	// a data problem, so fail CLOSED (a retryable error) rather than telling the
+	// customer to requote something that may well be in stock.
+	//
+	// Realistic since RFC-0021 phase 4: the phase-2 backfill from product was
+	// retired with the column it copied, so balances now arrive only from a seed or
+	// an explicit RECEIVE movement, and a catalog SKU with no balance row is an
+	// ordinary state rather than an impossible one.
+	UnknownSkuIds []string `protobuf:"bytes,3,rep,name=unknown_sku_ids,json=unknownSkuIds,proto3" json:"unknown_sku_ids,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -577,6 +598,13 @@ func (x *CheckAvailabilityResponse) GetCanFulfill() bool {
 func (x *CheckAvailabilityResponse) GetShortages() []*Shortage {
 	if x != nil {
 		return x.Shortages
+	}
+	return nil
+}
+
+func (x *CheckAvailabilityResponse) GetUnknownSkuIds() []string {
+	if x != nil {
+		return x.UnknownSkuIds
 	}
 	return nil
 }
@@ -1146,11 +1174,12 @@ const file_inventory_v1_inventory_proto_rawDesc = "" +
 	"\bShortage\x12\x15\n" +
 	"\x06sku_id\x18\x01 \x01(\tR\x05skuId\x12\x1c\n" +
 	"\trequested\x18\x02 \x01(\x03R\trequested\x120\n" +
-	"\x14available_to_promise\x18\x03 \x01(\x03R\x12availableToPromise\"r\n" +
+	"\x14available_to_promise\x18\x03 \x01(\x03R\x12availableToPromise\"\x9a\x01\n" +
 	"\x19CheckAvailabilityResponse\x12\x1f\n" +
 	"\vcan_fulfill\x18\x01 \x01(\bR\n" +
 	"canFulfill\x124\n" +
-	"\tshortages\x18\x02 \x03(\v2\x16.inventory.v1.ShortageR\tshortages\"\xf8\x01\n" +
+	"\tshortages\x18\x02 \x03(\v2\x16.inventory.v1.ShortageR\tshortages\x12&\n" +
+	"\x0funknown_sku_ids\x18\x03 \x03(\tR\runknownSkuIds\"\xf8\x01\n" +
 	"\x0eReserveRequest\x12%\n" +
 	"\x0ereservation_id\x18\x01 \x01(\tR\rreservationId\x12\x19\n" +
 	"\border_id\x18\x02 \x01(\tR\aorderId\x123\n" +
