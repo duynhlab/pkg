@@ -9,47 +9,20 @@ permissions:
   pull-requests: read # sonarqube.yml's job requests this; a reusable workflow can't exceed the caller's grant
 
 jobs:
-  # The shared go-check.yml reusable workflow assumes a single root go.mod;
-  # this repo is a multi-module monorepo (no top-level go.mod), so the gate
-  # runs through the Makefile, which fans out per module.
+  # Multi-module gate through the shared go-check.yml: the Makefile fans
+  # tidy/fmt/vet/lint/test out per module (so the reusable lint job, which
+  # assumes a single root module, stays off), the git diff catches a PR
+  # pushed without tidy/fmt, and make coverage merges the per-module
+  # profiles into the coverage.out artifact sonarqube.yml expects.
   go-check:
-    name: Go Check
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Setup Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          # Any module's go.mod works: all modules pin the same go directive.
-          go-version-file: obsx/go.mod
-          cache-dependency-path: '**/go.sum'
-
-      # tidy + fmt + vet + lint + race tests with coverage, per module.
-      # Ryuk is disabled for testcontainers: the runner is ephemeral (no
-      # orphans to clean) and Ryuk's connect step intermittently hangs on
-      # GitHub runners. Containers are still torn down by each test's Cleanup.
-      - name: Test all modules
-        env:
-          TESTCONTAINERS_RYUK_DISABLED: "true"
-        run: make test TAGS=integration
-
-      # make test runs go mod tidy and go fmt; a dirty tree here means a PR
-      # was pushed without them and would silently drift.
-      - name: Verify tidy and fmt left no changes
-        run: git diff --exit-code
-
-      - name: Merge module coverage profiles
-        run: make coverage
-
-      - name: Archive code coverage results
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: coverage-report
-          path: coverage.out
-          retention-days: 1
+    # TODO: pin to the merged SHA once gha-workflows' go-check multi-module
+    # support (cache-dependency-path input + Ryuk env) lands on main.
+    uses: duynhlab/gha-workflows/.github/workflows/go-check.yml@main
+    with:
+      command-test: 'make test TAGS=integration && git diff --exit-code && make coverage'
+      gomod-path: 'obsx/go.mod' # any module works: all pin the same go directive
+      cache-dependency-path: '**/go.sum'
+      lint: false # lint runs per module inside make test
 
   # Protobuf contract checks for the gRPC modules under proto/.
   # Lints the .proto style and fails the PR on a backward-incompatible change.
