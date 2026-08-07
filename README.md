@@ -9,7 +9,8 @@ the services (`auth`, `user`, `product`, `cart`, `order`, `review`, `shipping`,
 go get github.com/duynhlab/pkg
 ```
 
-Consumers pin a tag (`github.com/duynhlab/pkg@vX.Y.Z`); Renovate keeps services
+Consumers pin a tag (`github.com/duynhlab/pkg@vX.Y.Z`); hand-authored bump PRs
+(`Bump pkg to vX.Y.Z`, go.mod + go.sum only) keep services
 up to date.
 
 ## Packages
@@ -24,7 +25,9 @@ up to date.
 | `migratex` | Runs embedded SQL schema migrations with golang-migrate — `Run(fsys, dir, dsn)`. |
 | `httpx` | Shared HTTP helpers — consistent error responses (`RespondError`) and pagination (`ParsePage`, `NewPaginated`). |
 | `logger/zerolog`, `logger/clog`, `logger/zapx` | Structured loggers (`Setup(level)` + context helpers) with trace-ID injection. |
-| `proto/<svc>/v1` | Versioned `.proto` contracts + **committed** generated stubs for `notification`, `product`, `review`, `shipping`. |
+| `flagx` | Startup-validated env flags for migration modes (RFC-0021) — compile-time-fixed enum flags + a bounded percent flag; fail-fast `Must*` variants; values safe as metric labels. |
+| `idempotency` | Postgres-backed idempotency store with Stripe-style semantics — a key claims a request, the first response replays verbatim, a mismatched request is a conflict, in-flight locks have stale-lock takeover. Caller owns the table. |
+| `proto/<svc>/v1` | Versioned `.proto` contracts + **committed** generated stubs for `cart`, `inventory`, `notification`, `order`, `payment`, `product`, `review`, `shipping`. |
 
 > Authoritative per-package detail lives in [`AGENTS.md`](AGENTS.md).
 
