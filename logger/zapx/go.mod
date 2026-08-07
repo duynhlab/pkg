@@ -1,6 +1,6 @@
 module github.com/duynhlab/pkg/logger/zapx
 
-go 1.25.8
+go 1.26.0
 
 require go.uber.org/zap v1.28.0
 

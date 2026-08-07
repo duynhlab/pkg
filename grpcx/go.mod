@@ -1,6 +1,6 @@
 module github.com/duynhlab/pkg/grpcx
 
-go 1.25.8
+go 1.26.0
 
 require (
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.69.0
