@@ -98,15 +98,65 @@ repo labels are declaratively synced from `.github/labels.yaml`.
 
 ## Releasing
 
-Each module is tagged separately, `<module>/vX.Y.Z`. Cut a tag only from
-`main`, after the content is verified — a pushed tag is cached by the Go
-module proxy immediately and cannot be fixed, only superseded:
+Each module is tagged separately, `<module>/vX.Y.Z`. A pushed tag is cached
+by the Go module proxy immediately and cannot be fixed, only superseded by a
+new patch version. `make release-<module>` guards the common mistakes: it
+refuses a dirty tree, a HEAD not on `origin/main`, a non-semver `VER`, and an
+unknown module.
+
+**Step 0 — prepare** (release always cuts from pushed `main`):
 
 ```bash
-make release-httpx VER=0.36.1
+git checkout main
+git pull --ff-only origin main   # HEAD must already be on origin/main
+git status                       # working tree must be clean
+make modules                     # confirm all modules are discovered
 ```
 
-If modules ever depend on each other, tag dependencies first (Layer 0 → 1 → 2).
+**Step 1 — tag each module you're releasing.** Every command tags
+`<module>/v<VER>` and pushes it immediately; nested modules use `:` instead
+of `/`. `VER` carries no `v` prefix. Releasing everything at once:
+
+```bash
+# Layer 0
+make release-proto          VER=0.36.0
+make release-flagx          VER=0.36.0
+make release-logger:zapx    VER=0.36.0
+make release-logger:zerolog VER=0.36.0
+make release-logger:clog    VER=0.36.0
+
+# Layer 1
+make release-httpx          VER=0.36.0
+make release-grpcx          VER=0.36.0
+make release-authmw         VER=0.36.0
+make release-idempotency    VER=0.36.0
+
+# Layer 2
+make release-obsx           VER=0.36.0
+make release-dbx            VER=0.36.0
+make release-migratex       VER=0.36.0
+make release-temporalx      VER=0.36.0
+```
+
+Order does not matter today (no cross-module dependencies); the layer
+grouping is habit-forming — the moment one module requires another, its
+dependency must be tagged first (Layer 0 → 1 → 2). Each pushed tag triggers
+the `release` workflow, which publishes a GitHub Release with generated
+notes.
+
+**Step 2 — verify:**
+
+```bash
+git tag --sort=-creatordate | head -13
+
+# The proxy must resolve the new versions (spot-check a few):
+GOPROXY=https://proxy.golang.org go list -m github.com/duynhlab/pkg/httpx@v0.36.0
+GOPROXY=https://proxy.golang.org go list -m github.com/duynhlab/pkg/logger/zapx@v0.36.0
+GOPROXY=https://proxy.golang.org go list -m github.com/duynhlab/pkg/obsx@v0.36.0
+```
+
+If the repo is private, go through git instead of the public proxy:
+`GOPRIVATE=github.com/duynhlab go list -m ...`.
 
 ## License
 
