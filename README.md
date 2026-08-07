@@ -1,91 +1,96 @@
+buf lint
 # pkg
 
-Shared Go library for the **duynhlab** microservices platform — the common gRPC,
-auth, observability, database, logging, database-migration and protobuf code so
-the services (`auth`, `user`, `product`, `cart`, `order`, `review`, `shipping`,
-`notification`, `payment`, `checkout`) don't reimplement it.
+[![godev](https://img.shields.io/static/v1?label=godev&message=reference&color=00add8)](https://pkg.go.dev/github.com/duynhlab/pkg)
+[![build](https://github.com/duynhlab/pkg/actions/workflows/check.yml/badge.svg)](https://github.com/duynhlab/pkg/actions)
 
-```bash
-go get github.com/duynhlab/pkg
-```
-
-Consumers pin a tag (`github.com/duynhlab/pkg@vX.Y.Z`); Renovate keeps services
-up to date.
+Shared Go library for the duynhlab microservices platform — common gRPC,
+auth, observability, database, logging, migration and protobuf helpers so
+services don't reimplement them.
 
 ## Packages
 
-| Package | What it provides |
-|---------|------------------|
-| `grpcx` | gRPC server/client helpers for east-west calls — `NewServer` (otelgrpc + health + reflection), `Dial` (otelgrpc + `round_robin` over `dns:///` + default per-RPC timeout). Plaintext transport (mTLS later). |
-| `authmw` | Fail-closed Gin JWT middleware — verifies RS256 bearer tokens locally against a cached JWKS (issuer/audience pinned, RS256-only); missing/invalid → 401, JWKS unavailable → 503 (still denies); sets `user_id`/`username`/`email` on the context. |
-| `obsx` | OpenTelemetry bootstrap — the single SDK wiring point. `SetupObservability(ctx, ConfigFromEnv())` builds traces + metrics + logs over OTLP (no scrape endpoint since RFC-0014 P3) and returns one `Shutdown`; `ZapCore` tees zap logs into the OTLP pipeline; `TraceContext(ctx)` binds a span to a log so the bridge stamps native trace_id/span_id; `SetupProfiling` (Pyroscope), `TracerProviderWithProfiles` (traces↔profiles), `TraceIDFromContext` (trace-id string). |
-| `dbx` | Postgres pool pre-wired with OpenTelemetry — `NewPool(ctx, dsn, opts...)` builds a `pgxpool` with otelpgx query tracing (bounded span names, no bind-parameter/connection PII), `pgxpool.*` pool-stat metrics, and the transaction-mode-pooler-safe settings (simple protocol, caches off). The one place the fleet configures DB instrumentation. |
-| `temporalx` | Temporal client/worker bootstrap with the OTel tracing interceptor wired in — `Dial(Config{HostPort, Namespace})`, `NewWorker(client, taskQueue, opts...)`. Opt into Worker Deployment Versioning with `NewWorker(c, q, MustVersioningFromEnv())` (or `Versioning`/`MustVersioning` for identifiers that do not come from the environment) — `TEMPORAL_WORKER_DEPLOYMENT_NAME` + `TEMPORAL_WORKER_BUILD_ID`, both absent ⇒ unversioned, exactly one ⇒ startup failure. Workflows default to **Pinned**, and the env flip alone does **not** route traffic: the deployment's current version must also be set server-side, or new workflows target unversioned workers and stall silently. See the package header. Used by the order-fulfillment saga. |
-| `migratex` | Runs embedded SQL schema migrations with golang-migrate — `Run(fsys, dir, dsn)`. |
-| `httpx` | Shared HTTP helpers — consistent error responses (`RespondError`) and pagination (`ParsePage`, `NewPaginated`). |
-| `logger/zerolog`, `logger/clog`, `logger/zapx` | Structured loggers (`Setup(level)` + context helpers) with trace-ID injection. |
-| `proto/<svc>/v1` | Versioned `.proto` contracts + **committed** generated stubs for `notification`, `product`, `review`, `shipping`. |
+### Observability & Instrumentation
+- **[github.com/duynhlab/pkg/obsx](./obsx)** - OpenTelemetry SDK wiring, traces, metrics and log↔trace bridging
 
-> Authoritative per-package detail lives in [`AGENTS.md`](AGENTS.md).
+### gRPC & Transport
+- **[github.com/duynhlab/pkg/grpcx](./grpcx)** - gRPC server/client helpers (otelgrpc, health, reflection, Dial)
+
+### Authentication & Middleware
+- **[github.com/duynhlab/pkg/authmw](./authmw)** - Fail-closed Gin JWT middleware (RS256 + JWKS)
+
+### Database
+- **[github.com/duynhlab/pkg/dbx](./dbx)** - Postgres `pgxpool` builder with otelpgx query tracing and pool metrics
+
+### Temporal
+- **[github.com/duynhlab/pkg/temporalx](./temporalx)** - Temporal client/worker bootstrap with tracing and versioning helpers
+
+### Migrations
+- **[github.com/duynhlab/pkg/migratex](./migratex)** - Embedded SQL migrations runner (golang-migrate)
+
+### HTTP & Utilities
+- **[github.com/duynhlab/pkg/httpx](./httpx)** - HTTP helpers: error responses and pagination
+- **[github.com/duynhlab/pkg/idempotency](./idempotency)** - Idempotency helpers and repository abstractions
+
+### Logging
+- **[github.com/duynhlab/pkg/logger/zerolog](./logger/zerolog)** - zerolog helpers
+- **[github.com/duynhlab/pkg/logger/clog](./logger/clog)** - slog + clog bridge
+- **[github.com/duynhlab/pkg/logger/zapx](./logger/zapx)** - zap helpers and zap↔OTLP wiring
+
+### Protobuf / Contracts
+- **[proto/*/v1](./proto)** - Versioned `.proto` contracts and committed generated `*.pb.go` stubs
+
+For authoritative per-package guidance see [AGENTS.md](AGENTS.md).
 
 ## Usage
 
+Typical wiring (observability, DB pool, gRPC):
+
 ```go
 import (
+	"context"
 	"github.com/duynhlab/pkg/dbx"
 	"github.com/duynhlab/pkg/grpcx"
 	"github.com/duynhlab/pkg/obsx"
-	"go.uber.org/zap"
 )
 
-// One-call OTel SDK wiring — traces + metrics + logs over OTLP. Defer Shutdown.
+ctx := context.Background()
 obs, _ := obsx.SetupObservability(ctx, obsx.ConfigFromEnv())
 defer obs.Shutdown(ctx)
 
-// Continuous profiling (gated by PROFILING_ENABLED; reads PYROSCOPE_ENDPOINT).
-if stopProfiling, err := obsx.SetupProfiling(); err == nil {
-	defer stopProfiling(ctx)
-}
-
-// Postgres pool with query tracing + pool-stat metrics baked in.
-pool, _ := dbx.NewPool(ctx, cfg.Database.BuildDSN(), dbx.WithMaxConns(cfg.Database.MaxConnections))
+pool, _ := dbx.NewPool(ctx, "postgres://user:pass@localhost/db")
 defer pool.Close()
 
-// gRPC server + client.
-srv, health := grpcx.NewServer()            // otel + health + reflection
-conn, _ := grpcx.Dial("dns:///shipping.shipping.svc.cluster.local:9090") // otel + round_robin
-
-// Native log↔trace correlation from a repo/handler.
-log.Error("query failed", zap.Error(err), obsx.TraceContext(ctx))
+srv, _ := grpcx.NewServer()
+_ = srv
 ```
 
 ## gRPC / Protobuf
 
-Contracts live in `proto/<service>/v1/*.proto`, compiled with
-[buf](https://buf.build) (`protoc-gen-go`, `protoc-gen-go-grpc`). Generated
-`*.pb.go` stubs are **committed** — regenerate after editing a `.proto`:
+Contracts live in `proto/<service>/v1/*.proto` and are compiled with `buf`.
+Generated `*.pb.go` files are committed; regenerate with `buf generate` after
+editing a `.proto`.
+
+Prereqs (one-time):
 
 ```bash
-# one-time: install codegen tools
 go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-
 buf lint
-buf generate   # then commit the regenerated stubs
+buf generate
 ```
-
-`buf lint` + `buf breaking` (against `main`) run in CI.
 
 ## Development
 
+Run tests and linters locally:
+
 ```bash
-go test -race ./...     # race + coverage (matches CI)
+go test -race ./...
 golangci-lint run
 ```
 
-CI (`.github/workflows/check.yml`) gates on `go-check` (test + lint), `buf`, and
-SonarCloud. See [`AGENTS.md`](AGENTS.md) for contribution conventions (branch
-prefixes, ≤50-char commit subjects, no attribution trailers).
+CI runs `go-check`, `buf` and SonarCloud. See [AGENTS.md](AGENTS.md) for
+contribution conventions (branch naming, commit message style).
 
 ## License
 
