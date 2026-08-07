@@ -9,11 +9,37 @@ permissions:
   pull-requests: read # sonarqube.yml's job requests this; a reusable workflow can't exceed the caller's grant
 
 jobs:
+  # Mirrors check.yml's go-check job: the shared go-check.yml reusable
+  # workflow assumes a single root go.mod, so the multi-module gate runs
+  # through the Makefile instead.
   go-check:
-    uses: duynhlab/gha-workflows/.github/workflows/go-check.yml@812bbdb2b2138dec0a48b50fcdb3ef437aca870b # main
-    with:
-      command-test: 'go test -race -tags=integration -coverprofile=coverage.out ./...'
-      lint: true
+    name: Go Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: obsx/go.mod
+          cache-dependency-path: '**/go.sum'
+
+      - name: Test all modules
+        env:
+          TESTCONTAINERS_RYUK_DISABLED: "true"
+        run: make test TAGS=integration
+
+      - name: Merge module coverage profiles
+        run: make coverage
+
+      - name: Archive code coverage results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: coverage-report
+          path: coverage.out
+          retention-days: 1
 
   sonar:
     needs: go-check
