@@ -1,6 +1,8 @@
 # AGENTS.md
 
-Agent guide for `pkg`, the shared Go library for the duynhlab platform.
+[![godev](https://img.shields.io/static/v1?label=godev&message=reference&color=00add8)](https://pkg.go.dev/github.com/duynhlab/pkg) [![build](https://github.com/duynhlab/pkg/actions/workflows/check.yml/badge.svg)](https://github.com/duynhlab/pkg/actions)
+
+Agent guide for `pkg`, the shared Go library for the duynhlab platform. See [README.md](README.md) for a concise package overview.
 
 ## Contribution workflow
 
