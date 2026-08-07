@@ -19,10 +19,13 @@ GOLANGCI_LINT ?= go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v
 TAGS ?=
 TESTTAGS := $(if $(TAGS),-tags=$(TAGS),)
 
-.PHONY: all modules tidy fmt vet lint test coverage generate-proto proto-breaking
+.PHONY: all modules build tidy fmt vet lint test coverage generate-proto proto-breaking
 
 all: ## Run tidy, fmt, vet and lint for all modules
 	$(MAKE) $(addprefix all-,$(MODULES))
+
+build: ## go build for all modules (also the CodeQL manual build command)
+	$(MAKE) $(addprefix build-,$(MODULES))
 
 test: ## Run the full gate (tidy, fmt, vet, lint, test) for all modules
 	$(MAKE) $(addprefix test-,$(MODULES))
@@ -41,6 +44,9 @@ lint: ## golangci-lint for all modules
 
 modules: ## List the modules the Makefile discovered
 	@echo $(MODULES) | tr ' ' '\n'
+
+build-%:
+	cd $(subst :,/,$*) && go build ./...
 
 tidy-%:
 	cd $(subst :,/,$*) && go mod tidy

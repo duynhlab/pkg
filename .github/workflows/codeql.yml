@@ -2,8 +2,9 @@ name: CodeQL
 
 # Static security analysis via the shared reusable workflow — one call per
 # language so each analysis gets its own SARIF category. Go uses
-# build-mode: none: a multi-module monorepo has no root module to autobuild,
-# and CodeQL scans Go source without a build.
+# build-mode: manual with `make build`: the runner's CodeQL CLI rejects
+# build-mode none for Go, and autobuild cannot see a multi-module monorepo
+# with no root module — the traced per-module builds can.
 on:
   push:
     branches: [main]
@@ -24,7 +25,8 @@ jobs:
       security-events: write
     with:
       language: go
-      build-mode: none
+      build-mode: manual
+      manual-build-command: 'make build'
       go-version-file: obsx/go.mod # any module works: all pin the same go directive
 
   actions:
