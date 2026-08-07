@@ -1,6 +1,6 @@
 module github.com/duynhlab/pkg/logger/zerolog
 
-go 1.25.8
+go 1.26.0
 
 require (
 	github.com/rs/zerolog v1.35.1

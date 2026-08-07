@@ -1,6 +1,6 @@
 module github.com/duynhlab/pkg/logger/clog
 
-go 1.25.8
+go 1.26.0
 
 require (
 	github.com/chainguard-dev/clog v1.8.0

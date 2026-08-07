@@ -1,6 +1,6 @@
 module github.com/duynhlab/pkg/dbx
 
-go 1.25.8
+go 1.26.0
 
 require (
 	github.com/exaring/otelpgx v0.11.1
