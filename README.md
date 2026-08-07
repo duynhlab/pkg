@@ -93,7 +93,8 @@ make release-obsx VER=0.36.0  # tag and push obsx/v0.36.0
 ```
 
 CI (`.github/workflows/check.yml`) gates on the same `make test`, `buf`
-lint/breaking, and SonarCloud.
+lint/breaking, and SonarCloud; CodeQL analyzes Go and workflow files, and
+repo labels are declaratively synced from `.github/labels.yaml`.
 
 ## Releasing
 
