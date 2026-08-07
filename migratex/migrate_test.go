@@ -35,3 +35,14 @@ func TestPgxURL(t *testing.T) {
 		}
 	}
 }
+
+// A valid source with an unusable DSN must surface the driver error from
+// migrate itself — the branch after iofs.New succeeds.
+func TestRun_UnknownDriverSchemeFails(t *testing.T) {
+	fsys := fstest.MapFS{
+		"sql/0001_init.up.sql": &fstest.MapFile{Data: []byte("SELECT 1;")},
+	}
+	if err := Run(fsys, "sql", "nosuchdriver://localhost/db"); err == nil {
+		t.Fatal("Run succeeded with an unregistered database scheme")
+	}
+}

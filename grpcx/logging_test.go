@@ -206,6 +206,63 @@ func TestIsInfraMethod(t *testing.T) {
 	}
 }
 
+// fakeServerStream satisfies grpc.ServerStream just enough for the access-log
+// interceptor, which only reads Context().
+type fakeServerStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (f fakeServerStream) Context() context.Context { return f.ctx }
+
+func TestAccessLogStream_LogsOncePerStream(t *testing.T) {
+	logger, logs := obsLogger()
+	interceptor := accessLogStream(logger)
+
+	info := &grpc.StreamServerInfo{FullMethod: "/product.v1.ProductService/WatchStock"}
+	err := interceptor(nil, fakeServerStream{ctx: context.Background()}, info,
+		func(any, grpc.ServerStream) error { return status.Error(codes.Internal, "boom") })
+	if status.Code(err) != codes.Internal {
+		t.Fatalf("handler error not forwarded: %v", err)
+	}
+
+	entries := logs.All()
+	if len(entries) != 1 {
+		t.Fatalf("want 1 log entry, got %d", len(entries))
+	}
+	fields := entries[0].ContextMap()
+	if fields["method"] != info.FullMethod {
+		t.Errorf("method = %v, want %s", fields["method"], info.FullMethod)
+	}
+	if fields["code"] != "Internal" {
+		t.Errorf("code = %v, want Internal", fields["code"])
+	}
+}
+
+func TestAccessLogStream_SkipsInfraAndNilLogger(t *testing.T) {
+	logger, logs := obsLogger()
+	interceptor := accessLogStream(logger)
+
+	info := &grpc.StreamServerInfo{FullMethod: "/grpc.health.v1.Health/Watch"}
+	if err := interceptor(nil, fakeServerStream{ctx: context.Background()}, info,
+		func(any, grpc.ServerStream) error { return nil }); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if n := logs.Len(); n != 0 {
+		t.Errorf("infra stream produced %d log entries, want 0", n)
+	}
+
+	called := false
+	if err := accessLogStream(nil)(nil, fakeServerStream{ctx: context.Background()},
+		&grpc.StreamServerInfo{FullMethod: "/x.Y/Z"},
+		func(any, grpc.ServerStream) error { called = true; return nil }); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if !called {
+		t.Error("nil-logger stream interceptor must still call the handler")
+	}
+}
+
 // panicDesc registers one unary method "/grpcx.test.Panic/Boom" whose handler
 // panics — it invokes the server's chained interceptor so recovery + access
 // log run exactly as in production.
