@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
@@ -54,8 +55,39 @@ func TestAccessLogUnary_OKLogsInfo(t *testing.T) {
 	if _, ok := fields["duration"]; !ok {
 		t.Error("duration field missing")
 	}
-	if _, ok := fields["trace_id"]; !ok {
+	if got, ok := fields["trace_id"]; !ok {
 		t.Error("trace_id field missing")
+	} else if got != "" {
+		t.Errorf("trace_id = %v, want empty for a context without a span", got)
+	}
+}
+
+// The access-log line must carry the SAME trace ID as the active span, so a
+// "give me everything for trace_id=X" query joins logs and traces. This is the
+// regression guard for the log↔trace correlation contract.
+func TestAccessLogUnary_TraceIDMatchesActiveSpan(t *testing.T) {
+	logger, logs := obsLogger()
+	interceptor := accessLogUnary(logger)
+
+	traceID := trace.TraceID{0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19}
+	sc := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID: traceID,
+		SpanID:  trace.SpanID{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08},
+	})
+	ctx := trace.ContextWithSpanContext(context.Background(), sc)
+
+	info := &grpc.UnaryServerInfo{FullMethod: "/product.v1.ProductService/GetProduct"}
+	if _, err := interceptor(ctx, nil, info,
+		func(context.Context, any) (any, error) { return "ok", nil }); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+
+	entries := logs.All()
+	if len(entries) != 1 {
+		t.Fatalf("want 1 log entry, got %d", len(entries))
+	}
+	if got := entries[0].ContextMap()["trace_id"]; got != traceID.String() {
+		t.Errorf("trace_id = %v, want %s", got, traceID.String())
 	}
 }
 

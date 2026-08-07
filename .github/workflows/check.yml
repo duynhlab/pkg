@@ -9,18 +9,25 @@ permissions:
   pull-requests: read # sonarqube.yml's job requests this; a reusable workflow can't exceed the caller's grant
 
 jobs:
+  # Multi-module gate through the shared go-check.yml: the Makefile fans
+  # tidy/fmt/vet/lint/test out per module (so the reusable lint job, which
+  # assumes a single root module, stays off), the git diff catches a PR
+  # pushed without tidy/fmt, and make coverage merges the per-module
+  # profiles into the coverage.out artifact sonarqube.yml expects.
   go-check:
-    uses: duynhlab/gha-workflows/.github/workflows/go-check.yml@812bbdb2b2138dec0a48b50fcdb3ef437aca870b # main
+    uses: duynhlab/gha-workflows/.github/workflows/go-check.yml@e78fca208b20d2a0106571a1e1ee3bf23829310c # main
     with:
-      command-test: 'go test -race -tags=integration -coverprofile=coverage.out ./...'
-      lint: true
+      command-test: 'make test TAGS=integration && git diff --exit-code && make coverage'
+      gomod-path: 'obsx/go.mod' # any module works: all pin the same go directive
+      cache-dependency-path: '**/go.sum'
+      lint: false # lint runs per module inside make test
 
   # Protobuf contract checks for the gRPC modules under proto/.
   # Lints the .proto style and fails the PR on a backward-incompatible change.
   buf:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: bufbuild/buf-action@fd21066df7214747548607aaa45548ba2b9bc1ff # v1
         with:
           lint: true

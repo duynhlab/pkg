@@ -1,12 +1,17 @@
 name: release
 
-# Publish a GitHub Release whenever a SemVer tag is pushed. Consumers pin the
-# module by tag (github.com/duynhlab/pkg@vX.Y.Z); this gives each tag a release
-# page with auto-generated notes. No build/artifacts — pkg is a Go library.
+# Publish a GitHub Release whenever a module tag is pushed. Modules version
+# independently: `make release-<module> VER=x.y.z` pushes <module>/vx.y.z
+# (e.g. obsx/v0.36.0, logger/zapx/v0.36.0) and consumers pin that tag via
+# `go get github.com/duynhlab/pkg/<module>@vx.y.z`. This gives each tag a
+# release page with auto-generated notes. No build/artifacts — pkg is a Go
+# library. The bare v*.*.* pattern keeps release pages working for the
+# pre-split single-module tags.
 on:
   push:
     tags:
       - "v*.*.*"
+      - "**/v*.*.*"
 
 permissions:
   contents: write

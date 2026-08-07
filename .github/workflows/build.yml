@@ -9,11 +9,15 @@ permissions:
   pull-requests: read # sonarqube.yml's job requests this; a reusable workflow can't exceed the caller's grant
 
 jobs:
+  # Mirrors check.yml's go-check job: the multi-module gate runs through the
+  # Makefile via the shared go-check.yml (lint per module inside make test).
   go-check:
-    uses: duynhlab/gha-workflows/.github/workflows/go-check.yml@812bbdb2b2138dec0a48b50fcdb3ef437aca870b # main
+    uses: duynhlab/gha-workflows/.github/workflows/go-check.yml@e78fca208b20d2a0106571a1e1ee3bf23829310c # main
     with:
-      command-test: 'go test -race -tags=integration -coverprofile=coverage.out ./...'
-      lint: true
+      command-test: 'make test TAGS=integration && git diff --exit-code && make coverage'
+      gomod-path: 'obsx/go.mod' # any module works: all pin the same go directive
+      cache-dependency-path: '**/go.sum'
+      lint: false # lint runs per module inside make test
 
   sonar:
     needs: go-check

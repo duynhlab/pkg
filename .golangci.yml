@@ -1,7 +1,54 @@
 version: "2"
 run:
   tests: true
+  # One shared config for every module; lint runs from each module directory
+  # (make lint-<module>), so report paths relative to this file for stable
+  # depguard file matching.
+  relative-path-mode: cfg
 linters:
+  enable:
+    - depguard
+  settings:
+    depguard:
+      rules:
+        # Layer 2 modules (obsx, dbx, migratex, temporalx) are terminal: no
+        # module in this repository may import them. One rule per terminal
+        # module, exempting only that module's own tree (an external test
+        # package like obsx_test legitimately imports its own module). If
+        # depguard rejects your import, the import is wrong — not this rule.
+        # Escalate to a human before touching it.
+        no-obsx:
+          files: ["!obsx/**", "!**/obsx/**"]
+          deny:
+            - pkg: github.com/duynhlab/pkg/obsx
+              desc: obsx is a terminal module; declare a local interface and let main() inject
+        no-dbx:
+          files: ["!dbx/**", "!**/dbx/**"]
+          deny:
+            - pkg: github.com/duynhlab/pkg/dbx
+              desc: dbx is a terminal module; accept *pgxpool.Pool or a narrow local interface
+        no-migratex:
+          files: ["!migratex/**", "!**/migratex/**"]
+          deny:
+            - pkg: github.com/duynhlab/pkg/migratex
+              desc: migratex is a terminal module wired in main() only
+        no-temporalx:
+          files: ["!temporalx/**", "!**/temporalx/**"]
+          deny:
+            - pkg: github.com/duynhlab/pkg/temporalx
+              desc: temporalx is a terminal module wired in main() only
+        # The OpenTelemetry SDK lives in obsx and nowhere else; every other
+        # module may import only the API (go.opentelemetry.io/otel,
+        # otel/trace, otel/metric) and contrib instrumentation. Tests are
+        # exempt (in-memory exporters need the SDK).
+        otel-sdk-only-in-obsx:
+          files:
+            - "!$test"
+            - "!obsx/**"
+            - "!**/obsx/**"
+          deny:
+            - pkg: go.opentelemetry.io/otel/sdk
+              desc: the OTel SDK is wired in obsx only; import the API, not the SDK
   exclusions:
     generated: lax
     presets:
@@ -20,7 +67,7 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/duynhne/pkg
+        - github.com/duynhlab/pkg
   exclusions:
     generated: lax
     paths:

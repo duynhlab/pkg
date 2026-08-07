@@ -1,0 +1,40 @@
+name: CodeQL
+
+# Static security analysis via the shared reusable workflow — one call per
+# language so each analysis gets its own SARIF category. Go uses
+# build-mode: manual with `make build`: the runner's CodeQL CLI rejects
+# build-mode none for Go, and autobuild cannot see a multi-module monorepo
+# with no root module — the traced per-module builds can.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '30 5 * * 1' # weekly, Monday 05:30 UTC — catches new queries/CVEs
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    uses: duynhlab/gha-workflows/.github/workflows/codeql.yml@66a4413579980483667cf768e6f623caf09357d3 # main
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    with:
+      language: go
+      build-mode: manual
+      manual-build-command: 'make build'
+      go-version-file: obsx/go.mod # any module works: all pin the same go directive
+
+  actions:
+    uses: duynhlab/gha-workflows/.github/workflows/codeql.yml@66a4413579980483667cf768e6f623caf09357d3 # main
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    with:
+      language: actions
+      build-mode: none

@@ -1,0 +1,29 @@
+name: sync-labels
+
+# Keeps the repo's labels exactly in sync with .github/labels.yaml —
+# strictly declarative: labels not in the file are deleted.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/labels.yaml
+
+permissions:
+  contents: read
+
+jobs:
+  sync-labels:
+    permissions:
+      contents: read
+      issues: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: EndBug/label-sync@52074158190acb45f3077f9099fea818aa43f97a # v2.3.3
+        with:
+          config-file: .github/labels.yaml
+          delete-other-labels: true
+          token: ${{ secrets.GITHUB_TOKEN }}
