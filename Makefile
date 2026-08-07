@@ -19,7 +19,15 @@ GOLANGCI_LINT ?= go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v
 TAGS ?=
 TESTTAGS := $(if $(TAGS),-tags=$(TAGS),)
 
-.PHONY: all modules build tidy fmt vet lint test coverage generate-proto proto-breaking
+# Override per invocation for focused runs, e.g.
+# `make test-obsx GO_TEST_ARGS="-race -run TestSetup -v"`.
+GO_TEST_ARGS ?= -race
+
+# Which slice of the module list test-chunk runs: N/M = chunk N of M,
+# 1-indexed. `make test-chunk CHUNK=2/4` runs the second quarter.
+CHUNK ?= 1/1
+
+.PHONY: all modules build tidy fmt vet lint test test-chunk coverage generate-proto proto-breaking
 
 all: ## Run tidy, fmt, vet and lint for all modules
 	$(MAKE) $(addprefix all-,$(MODULES))
@@ -29,6 +37,22 @@ build: ## go build for all modules (also the CodeQL manual build command)
 
 test: ## Run the full gate (tidy, fmt, vet, lint, test) for all modules
 	$(MAKE) $(addprefix test-,$(MODULES))
+
+test-chunk: ## Run the gate for one slice of the modules (CHUNK=N/M)
+	@CHUNK_NUM=$$(echo $(CHUNK) | cut -d'/' -f1); \
+	TOTAL_CHUNKS=$$(echo $(CHUNK) | cut -d'/' -f2); \
+	MODULES_LIST="$(MODULES)"; \
+	TOTAL_MODULES=$$(echo $$MODULES_LIST | tr ' ' '\n' | wc -l); \
+	CHUNK_SIZE=$$(( (TOTAL_MODULES + TOTAL_CHUNKS - 1) / TOTAL_CHUNKS )); \
+	START_IDX=$$(( (CHUNK_NUM - 1) * CHUNK_SIZE + 1 )); \
+	END_IDX=$$(( CHUNK_NUM * CHUNK_SIZE )); \
+	if [ $$END_IDX -gt $$TOTAL_MODULES ]; then END_IDX=$$TOTAL_MODULES; fi; \
+	CHUNK_MODULES=$$(echo $$MODULES_LIST | tr ' ' '\n' | sed -n "$${START_IDX},$${END_IDX}p" | tr '\n' ' '); \
+	echo "Running tests for chunk $(CHUNK): modules $$START_IDX-$$END_IDX of $$TOTAL_MODULES"; \
+	echo "Modules: $$CHUNK_MODULES"; \
+	for mod in $$CHUNK_MODULES; do \
+		$(MAKE) test-$$mod || exit 1; \
+	done
 
 tidy: ## go mod tidy for all modules
 	$(MAKE) $(addprefix tidy-,$(MODULES))
@@ -70,7 +94,7 @@ all-%:
 test-%:
 	cd $(subst :,/,$*) && go mod tidy && go fmt ./... && go vet ./... && \
 		$(GOLANGCI_LINT) run --config $(CURDIR)/.golangci.yml --timeout 10m && \
-		go test ./... -race $(TESTTAGS) -coverprofile coverage.out
+		go test ./... $(GO_TEST_ARGS) $(TESTTAGS) -coverprofile coverage.out
 
 coverage: ## Merge per-module coverage.out files into one root coverage.out
 	@echo "mode: atomic" > coverage.out
