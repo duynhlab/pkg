@@ -30,13 +30,13 @@ Before submitting code, review your changes for the following:
 
 ## Project overview
 
-`duynhlab/pkg` is the shared Go SDK for the platform's microservices (`auth`, `user`, `product`, `cart`, `order`, `review`, `shipping`, `notification`, `payment`, `checkout` — all built as `web → logic → core` layered services). It is a **multi-module monorepo**: the top-level `go.mod` is a deprecated, package-less placeholder (see below); all code lives in the 13 per-directory modules, each independently versioned and tagged (e.g. `httpx/v0.36.0`, `obsx/v0.36.0`, `logger/zapx/v0.36.0`). Services import specific modules from this repo.
+`duynhlab/pkg` is the shared Go SDK for the platform's microservices (`auth`, `user`, `product`, `cart`, `order`, `review`, `shipping`, `notification`, `payment`, `checkout` — all built as `web → logic → core` layered services). It is a **multi-module monorepo** — there is no top-level `go.mod`; all code lives in the 13 per-directory modules, each independently versioned and tagged (e.g. `httpx/v0.36.0`, `obsx/v0.36.0`, `logger/zapx/v0.36.0`). Services import specific modules from this repo.
 
 The repository provides: generated gRPC/protobuf contracts, structured logging, OpenTelemetry bootstrap, HTTP and gRPC transport helpers, authentication middleware, database access, migrations, startup flags, idempotency handling, and Temporal client/worker helpers.
 
 ## Repository layout
 
-The top-level `go.mod` contains **no Go packages** — it exists only so the frozen single-module line (`github.com/duynhlab/pkg`, last real version `v0.35.0`) can be vacated with a final placeholder tag. Never add code to it. Each of the 13 real modules has its own `go.mod`:
+There is **no top-level `go.mod`** — the single-module line (`github.com/duynhlab/pkg`) is frozen at `v0.35.0` and will never publish another version. Each of the 13 modules has its own `go.mod`:
 
 - `proto/` — one module holding the versioned gRPC contracts for all services (`cart`, `inventory`, `notification`, `order`, `payment`, `product`, `review`, `shipping`, each under `<svc>/v1/`). Source `.proto` files and the **committed** generated `.pb.go` stubs live together; `buf` drives codegen from the repo root.
 - `logger/zapx/`, `logger/zerolog/`, `logger/clog/` — three independent logger modules, one per backend. `logger/zapx` (zap) is the production default — every service uses it and it pairs with `obsx.ZapCore` for OTLP log export. `logger/clog` (stdlib `log/slog` via chainguard-dev/clog) is the slog-based alternative; `logger/zerolog` wraps rs/zerolog. All inject the active trace ID into log lines.
@@ -58,7 +58,7 @@ This is the most important thing to understand about this repo:
 - **Every directory with a `go.mod` is an independent module.** There are 13 taggable modules.
 - **Each module gets its own git tag** in the form `<module-path>/v<semver>` (e.g. `httpx/v0.36.0`, `logger/zapx/v0.36.0`). Module tags continue the pre-split numbering — the last single-module tag was `v0.35.0`, so per-module history starts at `v0.36.0`.
 - **External consumers** import specific tagged versions: `go get github.com/duynhlab/pkg/httpx@v0.36.0`.
-- **The root module is a tombstone.** `github.com/duynhlab/pkg` is a deprecated placeholder with no packages. Tagging it `v0.36.0` vacates the old package paths, so a consumer whose graph mixes the old `pkg` require with new per-module requires (an `ambiguous import` build error otherwise) can resolve it by bumping the root line. Never put Go files at the repo root.
+- **The old root module line is dead.** `github.com/duynhlab/pkg` is frozen at `v0.35.0`; a dependency graph that mixes the old require with a new per-module require fails immediately with `ambiguous import` (both provide the same package paths), and no newer root version will ever exist to resolve it — consumers must drop the old require entirely. Never re-create a root `go.mod` or put Go files at the repo root.
 - **There are currently no cross-module dependencies** inside this repo — every module builds standalone. Keep it that way when you can. If a genuine internal dependency ever appears, the dependent module carries a real published version in `require` **plus** a permanent sibling `replace` (e.g. `replace github.com/duynhlab/pkg/logger/zapx => ../logger/zapx`) for local development; `replace` in a non-main module is ignored by external consumers, so the `require` version must always be real.
 - **Changing one module may require updating dependents in the services.** A change to `obsx.ZapCore`'s contract, for example, affects every service's `middleware/logging.go`, which pairs it with `logger/zapx`.
 - **Do not use `go.work`.** With no cross-module imports there is nothing for a workspace to resolve, and a workspace file would mask module-boundary errors that CI will catch.
@@ -152,7 +152,7 @@ Generated files (never hand-edit):
 
 ## Gotchas and non-obvious rules
 
-- **The root module contains no packages.** From the repo root, `go build ./...` warns "matched no packages" but exits 0 — it appears to pass while checking nothing — and `go test ./...` fails with "no packages to test". Neither touches the 13 real modules. Always work within a module directory or use `make test-<module>`.
+- **No top-level `go.mod`.** From the repo root, `go build ./...` and `go test ./...` fail with "go.mod file not found" — nothing at the root builds or tests the 13 modules. Always work within a module directory or use `make test-<module>`.
 - **Module versioning is independent.** Changing `logger/zapx` does not bump `httpx`. Tag each changed module separately at release time.
 - **Tag order matters once modules depend on each other.** Tag dependencies before dependents (Layer 0 → 1 → 2), otherwise a `require` line points at a tag that does not exist yet and external `go get` fails even though local builds pass.
 - **A pushed tag cannot be fixed.** The Go module proxy caches immediately. A wrong `obsx/v0.36.0` cannot be corrected — you must burn the version and publish `v0.36.1`. `make release-<module>` checks the module exists and the tree is clean, but it cannot check that the content is right.

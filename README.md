@@ -7,8 +7,8 @@ Shared Go SDK for the duynhlab microservices platform — common gRPC, auth,
 observability, database, logging, migration and protobuf code so services
 don't reimplement it.
 
-This is a **multi-module monorepo**: the top-level `go.mod` is a deprecated,
-package-less placeholder (the single-module line is frozen at `v0.35.0`). Each
+This is a **multi-module monorepo**: there is no top-level `go.mod` (the
+single-module line is frozen at `v0.35.0`). Each
 module below has its own `go.mod` and is versioned and tagged independently
 (`<module>/vX.Y.Z`), so a service pulls in only what it imports:
 
@@ -81,7 +81,7 @@ _, _, _ = srv, health, conn
 ## Development
 
 All workflows go through the root `Makefile` — `go test ./...` at the repo
-root checks nothing, because the root module contains no packages:
+root checks nothing, because there is no root module:
 
 ```bash
 make modules                  # list discovered modules

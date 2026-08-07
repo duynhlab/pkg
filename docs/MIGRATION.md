@@ -15,9 +15,7 @@ Migrate one service per PR.
 - **Only `go.mod` changes.** One `require github.com/duynhlab/pkg v0.35.0`
   becomes N per-module requires.
 - New code lands only in per-module tags (`v0.36.0` onward); the single-module
-  line is frozen at `v0.35.0`. The root module's own `v0.36.0` is an empty
-  deprecation placeholder — it exists only to vacate the old package paths
-  (see Pitfalls).
+  line is frozen at `v0.35.0` and will never publish another version.
 
 ## Per-service module map
 
@@ -90,10 +88,9 @@ before editing):
   `github.com/duynhlab/pkg/obsx@v0.36.0` (new) does **not** build: both
   modules provide the same package path and Go fails immediately with
   `ambiguous import: found package ... in multiple modules`. Remove the old
-  require entirely in the same PR. If a *transitive* dependency still pins the
-  old `pkg`, bump the root line to the vacated placeholder:
-  `go get github.com/duynhlab/pkg@v0.36.0` — that version contains no
-  packages, which resolves the ambiguity in favor of the per-module line.
+  require entirely in the same PR. No newer root version will ever exist, so
+  if a *transitive* dependency still pins the old `pkg`, migrate that
+  dependency first.
 - **Tags without a `v` prefix don't exist.** The module tag is
   `obsx/v0.36.0`; the `go get` spelling is
   `go get github.com/duynhlab/pkg/obsx@v0.36.0`.
