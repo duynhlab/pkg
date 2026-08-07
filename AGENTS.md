@@ -4,11 +4,7 @@ Guidance for AI coding assistants working in `duynhlab/pkg`. Read this file befo
 
 ## Contribution workflow for AI agents
 
-- **Disclose AI assistance** with an `Assisted-by` trailer naming your agent and model:
-  ```sh
-  git commit -s -m "Add retry to grpcx client" --trailer "Assisted-by: <agent-name>/<model-id>"
-  ```
-  The `-s` flag adds the human's `Signed-off-by` from their git config — do not remove it. Do not add `Co-authored-by` with your agent name.
+- **No attribution trailers.** Never add `Co-authored-by`, `Generated-by`, `Signed-off-by`, `Assisted-by`, or any AI/tool attribution to commits.
 - **Commit message format:** Subject in imperative mood ("Add feature X" instead of "Adding feature X"), capitalized, no trailing period, ≤50 characters. Prefix with the module when the change is scoped to one: `obsx: Add metric exporter`. Body wrapped at 72 columns, explaining what and why. No `@mentions` or `#123` issue references in the commit — put those in the PR description.
 - **Trim verbiage:** in PR descriptions, commit messages, and code comments. No marketing prose, no restating the diff, no emojis.
 - **Rebase, don't merge:** Never merge `main` into the feature branch; rebase onto the latest `main` and push with `--force-with-lease`.
