@@ -15,9 +15,7 @@ jobs:
   # pushed without tidy/fmt, and make coverage merges the per-module
   # profiles into the coverage.out artifact sonarqube.yml expects.
   go-check:
-    # TODO: pin to the merged SHA once gha-workflows' go-check multi-module
-    # support (cache-dependency-path input + Ryuk env) lands on main.
-    uses: duynhlab/gha-workflows/.github/workflows/go-check.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/go-check.yml@e78fca208b20d2a0106571a1e1ee3bf23829310c # main
     with:
       command-test: 'make test TAGS=integration && git diff --exit-code && make coverage'
       gomod-path: 'obsx/go.mod' # any module works: all pin the same go directive
