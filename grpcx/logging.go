@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/duynhlab/pkg/obsx"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
@@ -52,6 +52,18 @@ func codeLevel(code codes.Code) zapcore.Level {
 		return zapcore.ErrorLevel
 	}
 	return zapcore.ErrorLevel
+}
+
+// traceIDFromContext returns the trace ID of the span in ctx, or "" if no
+// valid span is present, so a log line joins the same trace as its span. It
+// deliberately uses only the OTel trace API: grpcx must stay importable
+// without pulling the OTel SDK (which lives in obsx and nowhere else).
+func traceIDFromContext(ctx context.Context) string {
+	sc := trace.SpanFromContext(ctx).SpanContext()
+	if sc.HasTraceID() {
+		return sc.TraceID().String()
+	}
+	return ""
 }
 
 // peerAddr returns the client address from ctx, or "" when unavailable. It is
@@ -118,7 +130,7 @@ func accessLogStream(logger *zap.Logger) grpc.StreamServerInterceptor {
 func logRPC(ctx context.Context, logger *zap.Logger, method string, err error, d time.Duration) {
 	code := status.Code(err)
 	logger.Log(codeLevel(code), "gRPC request",
-		zap.String("trace_id", obsx.TraceIDFromContext(ctx)),
+		zap.String("trace_id", traceIDFromContext(ctx)),
 		zap.String("method", method),
 		zap.String("code", code.String()),
 		zap.Duration("duration", d),
