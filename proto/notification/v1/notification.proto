@@ -14,7 +14,7 @@ service NotificationService {
 }
 
 message SendEmailRequest {
-  int32 user_id = 1;
+  string user_id = 1; // token `sub`, opaque string (ADR-042)
   string to = 2;
   string subject = 3;
   string body = 4;
@@ -31,7 +31,7 @@ message SendEmailResponse {
 }
 
 message SendSMSRequest {
-  int32 user_id = 1;
+  string user_id = 1; // token `sub`, opaque string (ADR-042)
   string to = 2;
   string message = 3;
 }

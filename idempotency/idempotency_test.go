@@ -122,7 +122,7 @@ func TestScan_PopulatesFieldsInColumnOrder(t *testing.T) {
 
 	rec, err := scan(fakeRow{fill: func(dest []any) {
 		*dest[0].(*int64) = 11                  // id
-		*dest[1].(*int64) = 22                  // user_id
+		*dest[1].(*string) = "user-22"          // user_id
 		*dest[2].(*string) = "key-1"            // idem_key
 		*dest[3].(*string) = "POST"             // request_method
 		*dest[4].(*string) = "/orders"          // request_path
@@ -137,7 +137,7 @@ func TestScan_PopulatesFieldsInColumnOrder(t *testing.T) {
 		t.Fatalf("scan: %v", err)
 	}
 
-	if rec.ID != 11 || rec.UserID != 22 || rec.Key != "key-1" ||
+	if rec.ID != 11 || rec.UserID != "user-22" || rec.Key != "key-1" ||
 		rec.RequestMethod != "POST" || rec.RequestPath != "/orders" ||
 		rec.RequestHash != "abc123" || !rec.LockedAt.Equal(now) ||
 		rec.SubjectID == nil || *rec.SubjectID != subject ||

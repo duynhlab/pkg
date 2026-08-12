@@ -23,7 +23,7 @@ import (
 const schema = `
 CREATE TABLE idempotency_keys (
 	id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-	user_id        BIGINT      NOT NULL,
+	user_id        VARCHAR(255) NOT NULL,
 	idem_key       TEXT        NOT NULL,
 	request_method TEXT        NOT NULL,
 	request_path   TEXT        NOT NULL,
@@ -71,14 +71,14 @@ func TestRepository_Integration(t *testing.T) {
 	repo := New(pool, 90*time.Second)
 
 	t.Run("fresh claim then replay after finish", func(t *testing.T) {
-		rec, fresh, err := repo.Claim(ctx, 1, "k1", "POST", "/pay", "h1")
+		rec, fresh, err := repo.Claim(ctx, "u1", "k1", "POST", "/pay", "h1")
 		if err != nil || !fresh {
 			t.Fatalf("fresh claim: fresh=%v err=%v", fresh, err)
 		}
 		if err := repo.Finish(ctx, rec.ID, 201, []byte(`{"ok":true}`)); err != nil {
 			t.Fatal(err)
 		}
-		replay, fresh, err := repo.Claim(ctx, 1, "k1", "POST", "/pay", "h1")
+		replay, fresh, err := repo.Claim(ctx, "u1", "k1", "POST", "/pay", "h1")
 		if err != nil || fresh {
 			t.Fatalf("replay must be non-fresh: fresh=%v err=%v", fresh, err)
 		}
@@ -93,28 +93,28 @@ func TestRepository_Integration(t *testing.T) {
 	})
 
 	t.Run("same key different request is a conflict", func(t *testing.T) {
-		if _, _, err := repo.Claim(ctx, 2, "k2", "POST", "/pay", "h1"); err != nil {
+		if _, _, err := repo.Claim(ctx, "u2", "k2", "POST", "/pay", "h1"); err != nil {
 			t.Fatal(err)
 		}
-		if _, _, err := repo.Claim(ctx, 2, "k2", "POST", "/pay", "DIFFERENT"); err != ErrConflict {
+		if _, _, err := repo.Claim(ctx, "u2", "k2", "POST", "/pay", "DIFFERENT"); err != ErrConflict {
 			t.Fatalf("hash mismatch → ErrConflict, got %v", err)
 		}
-		if _, _, err := repo.Claim(ctx, 2, "k2", "POST", "/other", "h1"); err != ErrConflict {
+		if _, _, err := repo.Claim(ctx, "u2", "k2", "POST", "/other", "h1"); err != ErrConflict {
 			t.Fatalf("path mismatch → ErrConflict, got %v", err)
 		}
 	})
 
 	t.Run("in-flight fresh lock is locked", func(t *testing.T) {
-		if _, _, err := repo.Claim(ctx, 3, "k3", "POST", "/pay", "h1"); err != nil {
+		if _, _, err := repo.Claim(ctx, "u3", "k3", "POST", "/pay", "h1"); err != nil {
 			t.Fatal(err)
 		}
-		if _, _, err := repo.Claim(ctx, 3, "k3", "POST", "/pay", "h1"); err != ErrLocked {
+		if _, _, err := repo.Claim(ctx, "u3", "k3", "POST", "/pay", "h1"); err != ErrLocked {
 			t.Fatalf("in-flight fresh lock → ErrLocked, got %v", err)
 		}
 	})
 
 	t.Run("checkpoint sets subject; release enables takeover", func(t *testing.T) {
-		rec, _, err := repo.Claim(ctx, 4, "k4", "POST", "/pay", "h1")
+		rec, _, err := repo.Claim(ctx, "u4", "k4", "POST", "/pay", "h1")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -126,7 +126,7 @@ func TestRepository_Integration(t *testing.T) {
 			t.Fatal(err)
 		}
 		// After release the lock is aged → a same-key retry takes it over.
-		took, fresh, err := repo.Claim(ctx, 4, "k4", "POST", "/pay", "h1")
+		took, fresh, err := repo.Claim(ctx, "u4", "k4", "POST", "/pay", "h1")
 		if err != nil || !fresh {
 			t.Fatalf("released lock must be taken over: fresh=%v err=%v", fresh, err)
 		}
@@ -136,7 +136,7 @@ func TestRepository_Integration(t *testing.T) {
 	})
 
 	t.Run("stale lock is taken over", func(t *testing.T) {
-		rec, _, err := repo.Claim(ctx, 5, "k5", "POST", "/pay", "h1")
+		rec, _, err := repo.Claim(ctx, "u5", "k5", "POST", "/pay", "h1")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -144,13 +144,13 @@ func TestRepository_Integration(t *testing.T) {
 		if _, err := pool.Exec(ctx, `UPDATE idempotency_keys SET locked_at = now() - interval '10 minutes' WHERE id=$1`, rec.ID); err != nil {
 			t.Fatal(err)
 		}
-		if _, fresh, err := repo.Claim(ctx, 5, "k5", "POST", "/pay", "h1"); err != nil || !fresh {
+		if _, fresh, err := repo.Claim(ctx, "u5", "k5", "POST", "/pay", "h1"); err != nil || !fresh {
 			t.Fatalf("stale lock → takeover (fresh), got fresh=%v err=%v", fresh, err)
 		}
 	})
 
 	t.Run("reap deletes keys past ttl", func(t *testing.T) {
-		rec, _, err := repo.Claim(ctx, 6, "k6", "POST", "/pay", "h1")
+		rec, _, err := repo.Claim(ctx, "u6", "k6", "POST", "/pay", "h1")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -172,7 +172,7 @@ func TestRepository_Integration(t *testing.T) {
 		dead.Close()
 		dr := New(dead, 90*time.Second)
 		sid := int64(1)
-		if _, _, err := dr.Claim(ctx, 9, "kx", "POST", "/pay", "h"); err == nil {
+		if _, _, err := dr.Claim(ctx, "u9", "kx", "POST", "/pay", "h"); err == nil {
 			t.Fatal("Claim must error on a closed pool")
 		}
 		if err := dr.Checkpoint(ctx, 1, &sid); err == nil {
