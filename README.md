@@ -36,7 +36,7 @@ Modules are layered; lower layers never import higher ones (see
 | [`flagx`](./flagx) | 0 | Startup-validated environment flags (`Enum`, `Percent` + `Must*`) — fail fast, bounded values safe for metric labels. |
 | [`httpx`](./httpx) | 1 | HTTP helpers on gin: consistent error responses and pagination. |
 | [`grpcx`](./grpcx) | 1 | gRPC server/client for east-west calls: otelgrpc, health, reflection, panic recovery, access logs, error reasons. |
-| [`authmw`](./authmw) | 1 | Fail-closed gin JWT middleware (RS256 + cached JWKS, issuer/audience pinned). |
+| [`authmw`](./authmw) | 1 | Fail-closed gin OIDC middleware (pinned alg + cached JWKS, issuer/audience pinned, role normalization + `MiddlewareRequireRole`). |
 | [`idempotency`](./idempotency) | 1 | Stripe-style idempotency keys: `Record`, sentinel errors, Postgres `Repository` over `*pgxpool.Pool`. |
 | [`obsx`](./obsx) | 2 | OpenTelemetry SDK bootstrap — traces + metrics + logs over OTLP, zap bridge, Pyroscope profiling. The only module linking the OTel SDK. |
 | [`dbx`](./dbx) | 2 | Postgres `pgxpool` builder with otelpgx tracing and pool metrics, pooler-safe settings, no PII in telemetry. |
