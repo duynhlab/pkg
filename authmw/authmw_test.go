@@ -732,3 +732,76 @@ func TestNewVerifier_DerivedJWKSURL(t *testing.T) {
 		t.Fatal("derived certs endpoint was never fetched")
 	}
 }
+
+// preferred_username is the OIDC standard claim; "username" is the legacy
+// shape. Reading the wrong one leaves the handle empty in every downstream
+// response, which is a silent regression rather than a failure — so pin the
+// precedence and the fallback.
+func TestMiddlewareJWT_UsernameClaimPrecedence(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	const iss = "https://id.example.test/realms/r"
+	const aud = "platform"
+
+	tests := []struct {
+		name     string
+		mutate   func(jwt.MapClaims)
+		wantUser string
+	}{
+		{
+			name: "preferred_username wins over legacy username",
+			mutate: func(c jwt.MapClaims) {
+				c["preferred_username"] = "alice"
+				c["username"] = "legacy"
+			},
+			wantUser: "alice",
+		},
+		{
+			name:     "legacy username still read when preferred_username is absent",
+			mutate:   func(c jwt.MapClaims) { c["username"] = "legacy" },
+			wantUser: "legacy",
+		},
+		{
+			name:     "neither claim leaves the handle empty without failing the request",
+			mutate:   func(c jwt.MapClaims) { delete(c, "username") },
+			wantUser: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			key, err := rsa.GenerateKey(rand.Reader, 2048)
+			if err != nil {
+				t.Fatalf("generate key: %v", err)
+			}
+			const kid = "k1"
+			srv := jwksServer(t, &key.PublicKey, kid)
+
+			claims := validClaims(iss, aud, time.Now().Add(time.Hour))
+			tt.mutate(claims)
+			token := signRS256(t, key, kid, claims)
+
+			v := newVerifierFor(t, srv.URL, iss, aud)
+
+			var gotUser string
+			r := gin.New()
+			r.Use(MiddlewareJWT(v))
+			r.GET("/x", func(c *gin.Context) {
+				gotUser = c.GetString(CtxUsername)
+				c.Status(http.StatusOK)
+			})
+
+			req := httptest.NewRequest(http.MethodGet, "/x", nil)
+			req.Header.Set("Authorization", "Bearer "+token)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200 (body %s)", w.Code, w.Body.String())
+			}
+			if gotUser != tt.wantUser {
+				t.Errorf("username = %q, want %q", gotUser, tt.wantUser)
+			}
+		})
+	}
+}

@@ -199,9 +199,18 @@ func (v *Verifier) verify(tokenString string) (*verifiedClaims, error) {
 		// reject (401) rather than propagate an empty identity downstream.
 		return nil, jwt.ErrTokenInvalidClaims
 	}
+	// preferred_username is the OIDC standard claim for a human-readable
+	// handle; "username" is only a fallback for tokens that predate the
+	// standard shape. Reading the standard name first is what keeps the
+	// handle populated — an issuer that mints preferred_username would
+	// otherwise surface an empty username all the way to the API response.
+	username := stringClaim(claims, "preferred_username")
+	if username == "" {
+		username = stringClaim(claims, "username")
+	}
 	return &verifiedClaims{
 		sub:      sub,
-		username: stringClaim(claims, "username"),
+		username: username,
 		email:    stringClaim(claims, "email"),
 		roles:    rolesClaim(claims, v.rolesPath),
 	}, nil
