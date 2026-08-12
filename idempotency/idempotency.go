@@ -13,7 +13,7 @@
 //
 //	CREATE TABLE idempotency_keys (
 //	    id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-//	    user_id        BIGINT      NOT NULL,
+//	    user_id        VARCHAR(255) NOT NULL,
 //	    idem_key       TEXT        NOT NULL,
 //	    request_method TEXT        NOT NULL,
 //	    request_path   TEXT        NOT NULL,
@@ -47,7 +47,7 @@ var (
 // cached response that replays verbatim.
 type Record struct {
 	ID            int64
-	UserID        int64
+	UserID        string
 	Key           string
 	RequestMethod string
 	RequestPath   string

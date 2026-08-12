@@ -24,7 +24,7 @@ const (
 type AuthorizeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	OrderId       int64                  `protobuf:"varint,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
-	UserId        int64                  `protobuf:"varint,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`                      // token `sub`, opaque string (ADR-042)
 	AmountMinor   int64                  `protobuf:"varint,3,opt,name=amount_minor,json=amountMinor,proto3" json:"amount_minor,omitempty"`      // minor units (cents); must match the order total
 	Currency      string                 `protobuf:"bytes,4,opt,name=currency,proto3" json:"currency,omitempty"`                                // ISO 4217; "USD" in v1 (mismatch → INVALID_ARGUMENT)
 	PaymentMethod string                 `protobuf:"bytes,5,opt,name=payment_method,json=paymentMethod,proto3" json:"payment_method,omitempty"` // opaque token, never PAN-like data
@@ -69,11 +69,11 @@ func (x *AuthorizeRequest) GetOrderId() int64 {
 	return 0
 }
 
-func (x *AuthorizeRequest) GetUserId() int64 {
+func (x *AuthorizeRequest) GetUserId() string {
 	if x != nil {
 		return x.UserId
 	}
-	return 0
+	return ""
 }
 
 func (x *AuthorizeRequest) GetAmountMinor() int64 {
@@ -701,7 +701,7 @@ const file_payment_v1_payment_proto_rawDesc = "" +
 	"payment.v1\"\xac\x01\n" +
 	"\x10AuthorizeRequest\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\x03R\aorderId\x12\x17\n" +
-	"\auser_id\x18\x02 \x01(\x03R\x06userId\x12!\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\x12!\n" +
 	"\famount_minor\x18\x03 \x01(\x03R\vamountMinor\x12\x1a\n" +
 	"\bcurrency\x18\x04 \x01(\tR\bcurrency\x12%\n" +
 	"\x0epayment_method\x18\x05 \x01(\tR\rpaymentMethod\"+\n" +

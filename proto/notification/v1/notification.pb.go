@@ -23,7 +23,7 @@ const (
 
 type SendEmailRequest struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
-	UserId  int32                  `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	UserId  string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"` // token `sub`, opaque string (ADR-042)
 	To      string                 `protobuf:"bytes,2,opt,name=to,proto3" json:"to,omitempty"`
 	Subject string                 `protobuf:"bytes,3,opt,name=subject,proto3" json:"subject,omitempty"`
 	Body    string                 `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
@@ -67,11 +67,11 @@ func (*SendEmailRequest) Descriptor() ([]byte, []int) {
 	return file_notification_v1_notification_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *SendEmailRequest) GetUserId() int32 {
+func (x *SendEmailRequest) GetUserId() string {
 	if x != nil {
 		return x.UserId
 	}
-	return 0
+	return ""
 }
 
 func (x *SendEmailRequest) GetTo() string {
@@ -148,7 +148,7 @@ func (x *SendEmailResponse) GetNotification() *Notification {
 
 type SendSMSRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        int32                  `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"` // token `sub`, opaque string (ADR-042)
 	To            string                 `protobuf:"bytes,2,opt,name=to,proto3" json:"to,omitempty"`
 	Message       string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -185,11 +185,11 @@ func (*SendSMSRequest) Descriptor() ([]byte, []int) {
 	return file_notification_v1_notification_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *SendSMSRequest) GetUserId() int32 {
+func (x *SendSMSRequest) GetUserId() string {
 	if x != nil {
 		return x.UserId
 	}
-	return 0
+	return ""
 }
 
 func (x *SendSMSRequest) GetTo() string {
@@ -349,7 +349,7 @@ const file_notification_v1_notification_proto_rawDesc = "" +
 	"\n" +
 	"\"notification/v1/notification.proto\x12\x0fnotification.v1\"\x8c\x01\n" +
 	"\x10SendEmailRequest\x12\x17\n" +
-	"\auser_id\x18\x01 \x01(\x05R\x06userId\x12\x0e\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x0e\n" +
 	"\x02to\x18\x02 \x01(\tR\x02to\x12\x18\n" +
 	"\asubject\x18\x03 \x01(\tR\asubject\x12\x12\n" +
 	"\x04body\x18\x04 \x01(\tR\x04body\x12!\n" +
@@ -357,7 +357,7 @@ const file_notification_v1_notification_proto_rawDesc = "" +
 	"\x11SendEmailResponse\x12A\n" +
 	"\fnotification\x18\x01 \x01(\v2\x1d.notification.v1.NotificationR\fnotification\"S\n" +
 	"\x0eSendSMSRequest\x12\x17\n" +
-	"\auser_id\x18\x01 \x01(\x05R\x06userId\x12\x0e\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x0e\n" +
 	"\x02to\x18\x02 \x01(\tR\x02to\x12\x18\n" +
 	"\amessage\x18\x03 \x01(\tR\amessage\"T\n" +
 	"\x0fSendSMSResponse\x12A\n" +

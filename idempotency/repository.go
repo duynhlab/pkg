@@ -48,7 +48,7 @@ func scan(row pgx.Row) (*Record, error) {
 //   - in-flight, fresh lock           -> ErrLocked
 //   - in-flight, stale lock           -> (rec, true, nil): TAKEOVER — caller re-drives,
 //     reusing the checkpointed subject id
-func (r *Repository) Claim(ctx context.Context, userID int64, key, method, path, hash string) (*Record, bool, error) {
+func (r *Repository) Claim(ctx context.Context, userID, key, method, path, hash string) (*Record, bool, error) {
 	tag, err := r.pool.Exec(ctx, `
 		INSERT INTO idempotency_keys (user_id, idem_key, request_method, request_path, request_hash)
 		VALUES ($1, $2, $3, $4, $5)
