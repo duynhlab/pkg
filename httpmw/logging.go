@@ -85,6 +85,27 @@ func TraceID(c *gin.Context) string {
 	return generateTraceID()
 }
 
+// maxLoggedValueLen caps request-derived strings before they reach a log
+// record. User-Agent in particular is attacker-controlled and unbounded — a
+// client can send a hundred kilobytes of it on every request and inflate log
+// volume, storage, and bill without ever tripping a rate limit.
+//
+// This also settles CodeQL's log-injection finding at the source rather than
+// with a suppression. Forging a record by injecting a newline is already
+// prevented by the JSON encoder, which escapes control characters — but this is
+// a library, and it cannot promise the caller's encoder does. Bounding the value
+// is the part that holds either way.
+const maxLoggedValueLen = 256
+
+// bounded truncates s for logging and marks that it was cut, so nobody reads a
+// clipped User-Agent as the whole thing.
+func bounded(s string) string {
+	if len(s) <= maxLoggedValueLen {
+		return s
+	}
+	return s[:maxLoggedValueLen] + "…(truncated)"
+}
+
 func generateTraceID() string {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
@@ -149,11 +170,11 @@ func Logging(logger *zap.Logger, extraSkipRoutes ...string) gin.HandlerFunc {
 
 		logByStatus(reqLogger, status, []zap.Field{
 			zap.String("method", method),
-			zap.String("path", path),
+			zap.String("path", bounded(path)),
 			zap.Int("status", status),
 			zap.Duration("duration", time.Since(start)),
-			zap.String("client_ip", c.ClientIP()),
-			zap.String("user_agent", c.Request.UserAgent()),
+			zap.String("client_ip", bounded(c.ClientIP())),
+			zap.String("user_agent", bounded(c.Request.UserAgent())),
 		})
 	}
 }

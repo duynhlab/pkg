@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -154,5 +155,150 @@ func TestTraceContextField_IsCarriedNotEncoded(t *testing.T) {
 	}
 	if !carried {
 		t.Error("no SkipType field carrying a context — the otelzap bridge has nothing to read")
+	}
+}
+
+// User-Agent is attacker-controlled and unbounded: a client can send a hundred
+// kilobytes of it on every request. Bounding it caps log volume and cost, and
+// settles CodeQL's log-injection finding at the source instead of suppressing it.
+func TestLogging_BoundsAttackerControlledValues(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	core, logs := observer.New(zapcore.DebugLevel)
+	r := gin.New()
+	r.Use(httpmw.Logging(zap.New(core)))
+	r.GET("/products/:id", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/products/42", nil)
+	req.Header.Set("User-Agent", strings.Repeat("A", 100_000))
+	r.ServeHTTP(rec, req)
+
+	ua, _ := logs.All()[0].ContextMap()["user_agent"].(string)
+	if len(ua) > 300 {
+		t.Errorf("user_agent logged at %d bytes — an unbounded header reached the record", len(ua))
+	}
+	if !strings.HasSuffix(ua, "(truncated)") {
+		t.Error("truncation is not marked — a clipped value reads as the whole thing")
+	}
+}
+
+// TraceID answers even with no span, because correlate-by-header is a client
+// contract. Each fallback rung is pinned so the order cannot silently change.
+func TestTraceID_FallbackOrder(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const want = "4bf92f3577b34da6a3ce929d0e0e4736"
+
+	t.Run("traceparent", func(t *testing.T) {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+		c.Request.Header.Set(httpmw.TraceParentHeader, "00-"+want+"-00f067aa0ba902b7-01")
+		if got := httpmw.TraceID(c); got != want {
+			t.Errorf("TraceID = %q, want the traceparent trace id", got)
+		}
+	})
+
+	t.Run("x-trace-id", func(t *testing.T) {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+		c.Request.Header.Set(httpmw.TraceIDHeader, "from-header")
+		if got := httpmw.TraceID(c); got != "from-header" {
+			t.Errorf("TraceID = %q, want the X-Trace-ID value", got)
+		}
+	})
+
+	t.Run("generated when nothing is present", func(t *testing.T) {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+		if got := httpmw.TraceID(c); len(got) != 32 {
+			t.Errorf("TraceID = %q, want a generated 32-hex id", got)
+		}
+	})
+
+	t.Run("malformed traceparent falls through", func(t *testing.T) {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+		c.Request.Header.Set(httpmw.TraceParentHeader, "garbage")
+		c.Request.Header.Set(httpmw.TraceIDHeader, "from-header")
+		if got := httpmw.TraceID(c); got != "from-header" {
+			t.Errorf("TraceID = %q, want the fallback when traceparent is malformed", got)
+		}
+	})
+}
+
+// LoggerFrom returns a silent logger when Logging was never mounted. A second,
+// uncorrelated logger would hide that mistake; silence surfaces it.
+func TestLoggerFrom(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("returns the request logger when mounted", func(t *testing.T) {
+		core, logs := observer.New(zapcore.DebugLevel)
+		r := gin.New()
+		r.Use(httpmw.Logging(zap.New(core)))
+		r.GET("/x", func(c *gin.Context) {
+			httpmw.LoggerFrom(c).Info("from handler")
+			c.Status(http.StatusOK)
+		})
+		get(t, r, "/x")
+
+		if logs.FilterMessage("from handler").Len() != 1 {
+			t.Error("handler log did not go through the request logger")
+		}
+	})
+
+	t.Run("silent when Logging was not mounted", func(t *testing.T) {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		if httpmw.LoggerFrom(c) == nil {
+			t.Fatal("LoggerFrom returned nil")
+		}
+		httpmw.LoggerFrom(c).Info("must not panic")
+	})
+}
+
+func TestLoggerWithTraceID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("binds the id when present", func(t *testing.T) {
+		core, logs := observer.New(zapcore.DebugLevel)
+		base := zap.New(core)
+		r := gin.New()
+		r.Use(httpmw.Logging(zap.NewNop()))
+		r.GET("/x", func(c *gin.Context) {
+			httpmw.LoggerWithTraceID(c, base).Info("bound")
+			c.Status(http.StatusOK)
+		})
+		get(t, r, "/x")
+
+		if _, ok := logs.All()[0].ContextMap()["trace_id"]; !ok {
+			t.Error("trace_id was not bound onto the base logger")
+		}
+	})
+
+	t.Run("returns the base logger untouched when absent", func(t *testing.T) {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		base := zap.NewNop()
+		if httpmw.LoggerWithTraceID(c, base) != base {
+			t.Error("expected the base logger back when no trace id is set")
+		}
+	})
+}
+
+// A service may add its own routes to the skip list; the defaults still apply.
+func TestSkipper_ExtraRoutesAddToDefaults(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	core, logs := observer.New(zapcore.DebugLevel)
+	r := gin.New()
+	r.Use(httpmw.Logging(zap.New(core), "/internal/debug"))
+	r.GET("/internal/debug", func(c *gin.Context) { c.Status(http.StatusOK) })
+	r.GET("/health", func(c *gin.Context) { c.Status(http.StatusOK) })
+	r.GET("/x", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	get(t, r, "/internal/debug")
+	get(t, r, "/health")
+	if logs.Len() != 0 {
+		t.Errorf("logs = %d, want 0 — extras and defaults must both skip", logs.Len())
+	}
+	get(t, r, "/x")
+	if logs.Len() != 1 {
+		t.Errorf("logs = %d, want 1 — a normal route must still log", logs.Len())
 	}
 }
