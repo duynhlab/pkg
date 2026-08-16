@@ -17,25 +17,34 @@ import (
 // The transport spans themselves come from httpmw (HTTP) or grpcx (gRPC); these
 // never create a root.
 
-// Tracer returns the tracer for a service scope. The OTel SDK is wired once in
-// main() by SetupObservability; this only reads the global provider it installed.
+// Tracer returns the tracer for an instrumentation scope. The OTel SDK is wired
+// once in main() by SetupObservability; this only reads the global provider it
+// installed.
 //
-// serviceName is a parameter rather than package state on purpose: the
-// per-service middleware this replaced kept it in a package-level variable
-// written by a setter at startup and read from the request path, which was safe
-// only by convention.
-func Tracer(serviceName string) trace.Tracer {
-	return otel.Tracer(serviceName)
+// scope names the CODE that creates the span, and OpenTelemetry asks for a
+// package path rather than a free-form label:
+//
+//	github.com/duynhlab/order-service/internal/logic/v1   // yes
+//	order                                                 // no
+//
+// The deployment identity is a different axis and already travels as
+// service.name on the Resource, stamped on every span. Naming the scope after
+// the service duplicates that and loses the only thing a scope is for: telling
+// two instrumented packages inside one service apart.
+func Tracer(scope string) trace.Tracer {
+	return otel.Tracer(scope)
 }
 
 // StartSpan opens a child span under whatever is already on the context. The
-// caller owns the returned span and must End it.
+// caller owns the returned span and must End it. See Tracer for what scope is.
 //
-//	ctx, span := obsx.StartSpan(ctx, "checkout.confirm")
+//	const tracerScope = "github.com/duynhlab/checkout-service/internal/logic/v1"
+//
+//	ctx, span := obsx.StartSpan(ctx, tracerScope, "checkout.confirm")
 //	defer span.End()
-func StartSpan(ctx context.Context, serviceName, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
+func StartSpan(ctx context.Context, scope, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
 	//nolint:spancheck // the span is returned; ending it is the caller's job
-	return Tracer(serviceName).Start(ctx, name, opts...)
+	return Tracer(scope).Start(ctx, name, opts...)
 }
 
 // AddSpanAttributes attaches attributes to the active span.
