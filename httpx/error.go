@@ -38,6 +38,12 @@ const (
 	CodeSessionExpired   = "SESSION_EXPIRED"   // 410: checkout session TTL elapsed
 	CodePriceChanged     = "PRICE_CHANGED"     // 409: catalog price differs from the session snapshot
 	CodeStockUnavailable = "STOCK_UNAVAILABLE" // 409: requested quantity no longer available
+	// ITEM_NOT_ORDERABLE is the persistent sibling of STOCK_UNAVAILABLE: the
+	// basket item's SKU has no inventory balance row at all, so no amount of
+	// waiting restocks it — an operator has to receive first stock (homelab
+	// ADR-053). Same 409 + requoted-session shape at confirm; flat 409 at
+	// session create, where no session exists yet to requote.
+	CodeItemNotOrderable = "ITEM_NOT_ORDERABLE" // 409: SKU has no inventory balance row (untracked)
 	CodePromoInvalid     = "PROMO_INVALID"     // 400: unknown or malformed promo code
 	CodePromoExpired     = "PROMO_EXPIRED"     // 409: promo code past its expiry
 	CodePromoExhausted   = "PROMO_EXHAUSTED"   // 409: redemption cap (global or per-user) reached
