@@ -23,12 +23,13 @@ func TestErrorCodesAreStableAndDistinct(t *testing.T) {
 		CodeSessionExpired:         "SESSION_EXPIRED",
 		CodePriceChanged:           "PRICE_CHANGED",
 		CodeStockUnavailable:       "STOCK_UNAVAILABLE",
+		CodeItemNotOrderable:       "ITEM_NOT_ORDERABLE",
 		CodePromoInvalid:           "PROMO_INVALID",
 		CodePromoExpired:           "PROMO_EXPIRED",
 		CodePromoExhausted:         "PROMO_EXHAUSTED",
 	}
-	if len(pinned) != 18 {
-		t.Fatalf("code constants collide: %d distinct values, want 18", len(pinned))
+	if len(pinned) != 19 {
+		t.Fatalf("code constants collide: %d distinct values, want 19", len(pinned))
 	}
 	for got, want := range pinned {
 		if got != want {
