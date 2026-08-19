@@ -44,9 +44,9 @@ const (
 	// ADR-053). Same 409 + requoted-session shape at confirm; flat 409 at
 	// session create, where no session exists yet to requote.
 	CodeItemNotOrderable = "ITEM_NOT_ORDERABLE" // 409: SKU has no inventory balance row (untracked)
-	CodePromoInvalid     = "PROMO_INVALID"     // 400: unknown or malformed promo code
-	CodePromoExpired     = "PROMO_EXPIRED"     // 409: promo code past its expiry
-	CodePromoExhausted   = "PROMO_EXHAUSTED"   // 409: redemption cap (global or per-user) reached
+	CodePromoInvalid     = "PROMO_INVALID"      // 400: unknown or malformed promo code
+	CodePromoExpired     = "PROMO_EXPIRED"      // 409: promo code past its expiry
+	CodePromoExhausted   = "PROMO_EXHAUSTED"    // 409: redemption cap (global or per-user) reached
 )
 
 // RespondError writes the standard error envelope:
