@@ -24,144 +24,23 @@ func resolve(opts ...WorkerOption) worker.Options {
 	return o
 }
 
-func TestMustVersioning_SetsDeploymentOptions(t *testing.T) {
-	o := resolve(MustVersioning("order-worker", "v1.5.0"))
-
-	if !o.DeploymentOptions.UseVersioning {
-		t.Error("UseVersioning = false, want true")
-	}
-	if got := o.DeploymentOptions.Version.DeploymentName; got != "order-worker" {
-		t.Errorf("DeploymentName = %q, want %q", got, "order-worker")
-	}
-	if got := o.DeploymentOptions.Version.BuildID; got != "v1.5.0" {
-		t.Errorf("BuildID = %q, want %q", got, "v1.5.0")
-	}
-	if got := o.DeploymentOptions.DefaultVersioningBehavior; got != workflow.VersioningBehaviorPinned {
-		t.Errorf("DefaultVersioningBehavior = %v, want Pinned", got)
-	}
-}
-
-func TestMustVersioning_TrimsWhitespace(t *testing.T) {
-	o := resolve(MustVersioning("  order-worker  ", "  v1.5.0  "))
-
-	if got := o.DeploymentOptions.Version; got.DeploymentName != "order-worker" || got.BuildID != "v1.5.0" {
-		t.Errorf("Version = %+v, want {order-worker v1.5.0}", got)
-	}
-}
-
-// An invalid identifier is a program constant being wrong, and the SDK would
-// accept it silently — so it must not build a worker.
-func TestMustVersioning_PanicsOnInvalidIdentifiers(t *testing.T) {
-	tests := []struct {
-		name           string
-		deploymentName string
-		buildID        string
-		wantMsg        string
-	}{
-		{"empty deployment name", "", "v1", "deployment name is empty"},
-		{"whitespace-only deployment name", "   ", "v1", "deployment name is empty"},
-		{"empty build id", "order-worker", "", "build id is empty"},
-		{"whitespace-only build id", "order-worker", "\t", "build id is empty"},
-		{"dotted deployment name", "order.saga", "v1", "reserves to join"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			defer func() {
-				r := recover()
-				if r == nil {
-					t.Fatalf("MustVersioning(%q, %q) did not panic", tt.deploymentName, tt.buildID)
-				}
-				if msg, ok := r.(string); !ok || !strings.Contains(msg, tt.wantMsg) {
-					t.Errorf("panic = %v, want it to mention %q", r, tt.wantMsg)
-				}
-			}()
-			MustVersioning(tt.deploymentName, tt.buildID)
-		})
-	}
-}
-
-// Dots are legitimate in a build id — only the deployment name is constrained,
-// because the SDK splits the canonical string on the FIRST dot.
-func TestMustVersioning_AllowsDottedBuildID(t *testing.T) {
-	o := resolve(MustVersioning("order-worker", "v1.5.0-rc.2"))
-
-	if got := o.DeploymentOptions.Version.BuildID; got != "v1.5.0-rc.2" {
-		t.Errorf("BuildID = %q, want %q", got, "v1.5.0-rc.2")
-	}
-}
-
-// Option order must not change the worker: "behavior then identity" is as
-// natural to write as the reverse, and the wrong one silently pinning every
-// workflow would keep old deployment versions from ever draining.
-func TestVersioningOptions_AreOrderInsensitive(t *testing.T) {
-	behaviorFirst := resolve(
-		WithDefaultVersioningBehavior(workflow.VersioningBehaviorAutoUpgrade),
-		MustVersioning("order-worker", "v1.5.0"),
-	)
-	versioningFirst := resolve(
-		MustVersioning("order-worker", "v1.5.0"),
-		WithDefaultVersioningBehavior(workflow.VersioningBehaviorAutoUpgrade),
-	)
-
-	if behaviorFirst.DeploymentOptions != versioningFirst.DeploymentOptions {
-		t.Fatalf("option order changed the result:\n behavior-first  = %+v\n versioning-first = %+v",
-			behaviorFirst.DeploymentOptions, versioningFirst.DeploymentOptions)
-	}
-	if got := behaviorFirst.DeploymentOptions.DefaultVersioningBehavior; got != workflow.VersioningBehaviorAutoUpgrade {
-		t.Errorf("DefaultVersioningBehavior = %v, want AutoUpgrade in both orders", got)
-	}
-}
-
-// Unspecified cannot remove the default: with versioning on, a workflow that
-// ends up with no behavior panics at registration.
-func TestWithDefaultVersioningBehavior_UnspecifiedKeepsPinnedDefault(t *testing.T) {
-	o := resolve(
-		MustVersioning("order-worker", "v1.5.0"),
-		WithDefaultVersioningBehavior(workflow.VersioningBehaviorUnspecified),
-	)
-
-	if got := o.DeploymentOptions.DefaultVersioningBehavior; got != workflow.VersioningBehaviorPinned {
-		t.Errorf("DefaultVersioningBehavior = %v, want Pinned", got)
-	}
-}
-
-// Unspecified must not overwrite an explicit choice either. A service that
-// assembles options conditionally can easily append a behavior read from a
-// zero-valued config field after an explicit one; downgrading AutoUpgrade to
-// Pinned there would strand the old deployment version, and the startup log
-// would read "pinned" with no hint an override was discarded.
-func TestWithDefaultVersioningBehavior_UnspecifiedDoesNotOverwrite(t *testing.T) {
-	o := resolve(
-		MustVersioning("order-worker", "v1.5.0"),
-		WithDefaultVersioningBehavior(workflow.VersioningBehaviorAutoUpgrade),
-		WithDefaultVersioningBehavior(workflow.VersioningBehaviorUnspecified),
-	)
-
-	if got := o.DeploymentOptions.DefaultVersioningBehavior; got != workflow.VersioningBehaviorAutoUpgrade {
-		t.Errorf("DefaultVersioningBehavior = %v, want AutoUpgrade preserved", got)
-	}
-}
-
-// An out-of-range behavior passes worker.New and RegisterWorkflow, then panics
-// inside the workflow task handler on the first behavior-less workflow task. It
-// has to fail at construction like every other bad input in this package.
-func TestWithDefaultVersioningBehavior_PanicsOnUnknown(t *testing.T) {
-	defer func() {
-		r := recover()
-		if r == nil {
-			t.Fatal("WithDefaultVersioningBehavior(99) did not panic")
-		}
-		if msg, ok := r.(string); !ok || !strings.Contains(msg, "unknown behavior 99") {
-			t.Errorf("panic = %v, want it to name the unknown behavior", r)
-		}
-	}()
-	WithDefaultVersioningBehavior(workflow.VersioningBehavior(99))
-}
-
 // WorkerOption is exported, so a hand-written option can enable versioning
 // while bypassing the validated constructors. The SDK accepts an empty Version
 // at both worker.New and RegisterWorkflow, so nothing downstream would catch it.
+// versionedOption builds a versioned option the only way the package offers one:
+// through the environment, the way a manifest or the Worker Controller supplies
+// it.
+func versionedOption(t *testing.T, deploymentName, buildID string) WorkerOption {
+	t.Helper()
+	t.Setenv(EnvDeploymentName, deploymentName)
+	t.Setenv(EnvBuildID, buildID)
+	opt, err := VersioningFromEnv()
+	if err != nil {
+		t.Fatalf("VersioningFromEnv(%q, %q): %v", deploymentName, buildID, err)
+	}
+	return opt
+}
+
 func TestNewWorker_PanicsOnVersioningWithoutIdentity(t *testing.T) {
 	c := lazyClient(t)
 	defer c.Close()
@@ -205,52 +84,12 @@ func TestNewWorker_PanicsOnUnknownBehaviorFromRawOption(t *testing.T) {
 	})
 }
 
-// Versioning is the checked constructor: identifiers that arrive at runtime must
-// be reportable as an error, not only as a panic.
-func TestVersioning_ReturnsErrorOnInvalidIdentifiers(t *testing.T) {
-	tests := []struct {
-		name           string
-		deploymentName string
-		buildID        string
-		wantErrPart    string
-	}{
-		{"empty deployment name", "", "v1", "deployment name is empty"},
-		{"empty build id", "order-worker", "", "build id is empty"},
-		{"dotted deployment name", "order.saga", "v1", "reserves to join"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			opt, err := Versioning(tt.deploymentName, tt.buildID)
-			if err == nil {
-				t.Fatalf("Versioning(%q, %q) = nil error, want one", tt.deploymentName, tt.buildID)
-			}
-			if !strings.Contains(err.Error(), tt.wantErrPart) {
-				t.Errorf("error %q does not mention %q", err.Error(), tt.wantErrPart)
-			}
-			if opt != nil {
-				t.Error("option must be nil when the identifiers are rejected")
-			}
-		})
-	}
-}
-
-func TestVersioning_ReturnsUsableOption(t *testing.T) {
-	opt, err := Versioning("  order-worker  ", "  v1.5.0  ")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	o := resolve(opt)
-	if got := o.DeploymentOptions.Version; got.DeploymentName != "order-worker" || got.BuildID != "v1.5.0" {
-		t.Errorf("Version = %+v, want {order-worker v1.5.0}", got)
-	}
-}
-
 // A behavior without versioning makes worker.New panic
 // (internal_worker.go:2218-2223); normalization drops it instead.
 func TestNormalize_DropsBehaviorWhenVersioningOff(t *testing.T) {
-	o := resolve(WithDefaultVersioningBehavior(workflow.VersioningBehaviorAutoUpgrade))
+	o := resolve(func(o *worker.Options) {
+		o.DeploymentOptions.DefaultVersioningBehavior = workflow.VersioningBehaviorAutoUpgrade
+	})
 
 	if o.DeploymentOptions.UseVersioning {
 		t.Error("UseVersioning = true, want false")
@@ -267,6 +106,7 @@ func TestVersioningFromEnv(t *testing.T) {
 		name           string
 		deploymentName string
 		buildID        string
+		wantName       string // expected resolved DeploymentName, when versioning is on
 		wantVersioning bool
 		wantErrParts   []string
 	}{
@@ -280,6 +120,7 @@ func TestVersioningFromEnv(t *testing.T) {
 			name:           "both set enables versioning",
 			deploymentName: "order-worker",
 			buildID:        "v1.5.0",
+			wantName:       "order-worker",
 			wantVersioning: true,
 		},
 		{
@@ -314,6 +155,35 @@ func TestVersioningFromEnv(t *testing.T) {
 			buildID:        "v1.5.0",
 			wantErrParts:   []string{"reserves to join"},
 		},
+		{
+			// Exactly what the Worker Controller injects: it composes the
+			// server-side name as "<k8s-namespace>/<resource-name>", so a slash
+			// must not be treated like the dot the SDK reserves.
+			name:           "controller-shaped name with a slash is allowed",
+			deploymentName: "order/order-fulfillment",
+			buildID:        "order-service-2-4-0-abc123",
+			wantName:       "order/order-fulfillment",
+			wantVersioning: true,
+		},
+		{
+			// Recovers the trimming coverage the removed MustVersioning tests
+			// carried: a manifest with stray spaces must not mint a distinct
+			// identity from the same values written cleanly.
+			name:           "surrounding whitespace is trimmed",
+			deploymentName: "  order-worker  ",
+			buildID:        "  v1.5.0  ",
+			wantName:       "order-worker",
+			wantVersioning: true,
+		},
+		{
+			// The build id is an image tag here, so dots are normal — only the
+			// deployment name reserves them.
+			name:           "dotted build id is allowed",
+			deploymentName: "order-worker",
+			buildID:        "v1.5.0-rc.2",
+			wantName:       "order-worker",
+			wantVersioning: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -345,8 +215,17 @@ func TestVersioningFromEnv(t *testing.T) {
 			if got := o.DeploymentOptions.UseVersioning; got != tt.wantVersioning {
 				t.Errorf("UseVersioning = %v, want %v", got, tt.wantVersioning)
 			}
-			if tt.wantVersioning && o.DeploymentOptions.Version.BuildID != tt.buildID {
-				t.Errorf("BuildID = %q, want %q", o.DeploymentOptions.Version.BuildID, tt.buildID)
+			if want := strings.TrimSpace(tt.buildID); tt.wantVersioning && o.DeploymentOptions.Version.BuildID != want {
+				t.Errorf("BuildID = %q, want %q", o.DeploymentOptions.Version.BuildID, want)
+			}
+			if tt.wantVersioning && o.DeploymentOptions.Version.DeploymentName != tt.wantName {
+				t.Errorf("DeploymentName = %q, want %q", o.DeploymentOptions.Version.DeploymentName, tt.wantName)
+			}
+			// Recovers the WithDefaultVersioningBehavior coverage: with the option
+			// gone, Pinned must still be what an unset behavior resolves to —
+			// upstream's reference worker hard-codes the same value.
+			if tt.wantVersioning && o.DeploymentOptions.DefaultVersioningBehavior != workflow.VersioningBehaviorPinned {
+				t.Errorf("DefaultVersioningBehavior = %v, want Pinned", o.DeploymentOptions.DefaultVersioningBehavior)
 			}
 		})
 	}
@@ -437,7 +316,7 @@ func TestNewWorker_VersionedWorkerIsAccepted(t *testing.T) {
 	// only survives if NewWorker normalized Unspecified to Pinned. Passing an
 	// explicit behavior here would satisfy the guard either way and prove
 	// nothing about normalization.
-	w := NewWorker(c, "order-fulfillment", MustVersioning("order-worker", "v1.5.0"))
+	w := NewWorker(c, "order-fulfillment", versionedOption(t, "order-worker", "v1.5.0"))
 	if w == nil {
 		t.Fatal("NewWorker returned nil")
 	}
@@ -511,7 +390,9 @@ func TestNewWorker_BehaviorWithoutVersioningIsAccepted(t *testing.T) {
 	defer c.Close()
 
 	w := NewWorker(c, "order-fulfillment",
-		WithDefaultVersioningBehavior(workflow.VersioningBehaviorAutoUpgrade))
+		func(o *worker.Options) {
+			o.DeploymentOptions.DefaultVersioningBehavior = workflow.VersioningBehaviorAutoUpgrade
+		})
 	if w == nil {
 		t.Fatal("NewWorker returned nil")
 	}
@@ -570,7 +451,7 @@ func TestNewWorker_SDKReceivesVersioning(t *testing.T) {
 
 	captured := &capturingPlugin{}
 	NewWorker(c, "order-fulfillment",
-		MustVersioning("order-worker", "v1.5.0"),
+		versionedOption(t, "order-worker", "v1.5.0"),
 		func(o *worker.Options) { o.Plugins = append(o.Plugins, captured) },
 	)
 

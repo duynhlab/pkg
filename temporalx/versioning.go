@@ -42,9 +42,16 @@ import (
 // is what actually cuts traffic over. Treat the env flip and that command as one
 // atomic operation in the rollout runbook.
 //
+// Under the Temporal Worker Controller both steps belong to the controller: it
+// creates one Deployment per build id, injects the identity (see the env block
+// below), and moves the Current Version through the Temporal API according to
+// the WorkerDeployment's rollout strategy. This package's job there is narrower
+// — read the identity it was given, and refuse to start on half of one.
+//
 // # Pinned carries a deployment contract
 //
-// Workflows default to Pinned here (see WithVersioning), which means a rolling
+// Workflows default to Pinned (normalizeVersioning resolves an unset behavior),
+// which means a rolling
 // update that replaces the old version's pods abandons every workflow still
 // pinned to it: those workflow tasks are correctly NOT dispatched to the new
 // version, so the workflows stop making progress until a worker of their
@@ -52,9 +59,20 @@ import (
 // Deployment rollout — keep the old version running until Temporal reports it
 // drained — not an in-place replacement.
 
-// Env vars a versioned worker reads.
+// Env vars a versioned worker reads. Both are Temporal's own names, and that is
+// the point: the Worker Controller appends exactly these to every container of
+// every versioned pod it creates (internal/k8s/deployments.go), and Temporal's
+// reference worker reads exactly these two (internal/demo/util/worker.go). A
+// worker configured this way needs nothing hand-written to run under the
+// controller, and nothing in a manifest duplicates a value the controller
+// derives.
+//
+// This platform previously spelled the first one TEMPORAL_WORKER_DEPLOYMENT_NAME,
+// an invented synonym that only ever appeared in our own manifests. The
+// controller does not set it, so a worker reading it saw half a configuration —
+// and half is the one case this package refuses to start on.
 const (
-	EnvDeploymentName = "TEMPORAL_WORKER_DEPLOYMENT_NAME"
+	EnvDeploymentName = "TEMPORAL_DEPLOYMENT_NAME"
 	EnvBuildID        = "TEMPORAL_WORKER_BUILD_ID"
 )
 
@@ -65,69 +83,13 @@ const (
 // decide.
 type WorkerOption func(*worker.Options)
 
-// Versioning opts the worker into Worker Deployment Versioning under
-// deploymentName/buildID. Workflows that register no behavior of their own
-// default to Pinned — see the "Pinned carries a deployment contract" note above,
-// and WithDefaultVersioningBehavior to change it.
-//
-// Identifiers are trimmed and validated here rather than deferred to the SDK,
-// which accepts an empty Version at both worker.New and RegisterWorkflow (the
-// registration guard at internal_worker.go:1232-1235 requires a non-zero
-// Version) — the pod would reach Ready and then fail on every poll.
-//
-// Most workers read identifiers from the environment; use VersioningFromEnv.
-func Versioning(deploymentName, buildID string) (WorkerOption, error) {
-	name, id := strings.TrimSpace(deploymentName), strings.TrimSpace(buildID)
-	if err := validateVersioning(name, id); err != nil {
-		return nil, fmt.Errorf("temporalx: %w", err)
-	}
-	return withVersioning(name, id), nil
-}
-
-// MustVersioning is Versioning for identifiers that are program constants,
-// panicking the way regexp.MustCompile does. Anything read at runtime — flags, a
-// config file, a secret store — belongs on Versioning so the caller can report
-// the failure in its own terms.
-func MustVersioning(deploymentName, buildID string) WorkerOption {
-	opt, err := Versioning(deploymentName, buildID)
-	if err != nil {
-		panic(err.Error())
-	}
-	return opt
-}
-
-// WithDefaultVersioningBehavior sets the behavior applied to workflows that
-// register none of their own. Order relative to Versioning does not matter;
-// repeating this option is last-wins.
-//
-// VersioningBehaviorUnspecified is a no-op, not a reset. The default cannot be
-// removed — with versioning on the SDK panics at registration for a workflow
-// that ends up with no behavior — and treating it as a reset would let a
-// zero-valued config field silently downgrade an explicit AutoUpgrade to
-// Pinned, leaving the old deployment version unable to drain.
-//
-// Any other value panics: it is a program constant, and an out-of-range
-// behavior survives both worker.New and RegisterWorkflow only to panic inside
-// the workflow task handler on the first behavior-less workflow task
-// (versioningBehaviorToProto, internal/workflow.go:3180-3191).
-func WithDefaultVersioningBehavior(b workflow.VersioningBehavior) WorkerOption {
-	switch b {
-	case workflow.VersioningBehaviorUnspecified:
-		return func(*worker.Options) {}
-	case workflow.VersioningBehaviorPinned, workflow.VersioningBehaviorAutoUpgrade:
-		return func(o *worker.Options) {
-			o.DeploymentOptions.DefaultVersioningBehavior = b
-		}
-	default:
-		panic(fmt.Sprintf("temporalx.WithDefaultVersioningBehavior: unknown behavior %d", int(b)))
-	}
-}
-
 // VersioningFromEnv builds the versioning option from EnvDeploymentName and
-// EnvBuildID.
+// EnvBuildID — the only way this package takes a version identity, because the
+// only two producers of one are a manifest and the Worker Controller, and both
+// speak environment variables.
 //
 // Neither variable present ⇒ versioning is off and the option is a no-op, so a
-// worker can call this unconditionally and let the manifests decide. Anything
+// worker can call this unconditionally and let the deployment decide. Anything
 // else is validated: presence decides, not emptiness, because an env var that
 // exists but is empty (a YAML quoting slip, an empty ConfigMap key) would
 // otherwise read as "unset" and silently produce an unversioned worker while
@@ -187,6 +149,10 @@ func validateVersioning(deploymentName, buildID string) error {
 	case buildID == "":
 		return errors.New("build id is empty")
 	case strings.Contains(deploymentName, "."):
+		// Only "." is rejected. "/" is deliberately allowed: the Worker
+		// Controller composes the server-side name as
+		// "<k8s-namespace>/<resource-name>", so rejecting it would make every
+		// controller-managed worker unstartable.
 		// The SDK joins the two into "<name>.<buildID>" and parses it back with
 		// SplitN(version, ".", 2) (internal_worker.go:2839-2844), so a dotted
 		// deployment name silently re-parses as a different identity: the
