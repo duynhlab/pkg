@@ -15,7 +15,7 @@ jobs:
   # pushed without tidy/fmt, and make coverage merges the per-module
   # profiles into the coverage.out artifact sonarqube.yml expects.
   go-check:
-    uses: duynhlab/gha-workflows/.github/workflows/go-check.yml@e321897e5c28e7c861b9d8beb37614e1c5823f42 # main # main
+    uses: duynhlab/gha-workflows/.github/workflows/go-check.yml@566b62220abb6db150099ca11cb7a9904288f3b5 # main # main
     with:
       command-test: 'make test TAGS=integration && git diff --exit-code && make coverage'
       gomod-path: 'obsx/go.mod' # any module works: all pin the same go directive
@@ -40,7 +40,7 @@ jobs:
 
   sonar:
     needs: go-check
-    uses: duynhlab/gha-workflows/.github/workflows/sonarqube.yml@e321897e5c28e7c861b9d8beb37614e1c5823f42 # main # main
+    uses: duynhlab/gha-workflows/.github/workflows/sonarqube.yml@566b62220abb6db150099ca11cb7a9904288f3b5 # main # main
     with:
       project-key: 'duynhlab_pkg'
       organization: 'duynhlab'
