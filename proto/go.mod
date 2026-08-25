@@ -1,6 +1,6 @@
 module github.com/duynhlab/pkg/proto
 
-go 1.26.0
+go 1.26.7
 
 require (
 	google.golang.org/grpc v1.82.1

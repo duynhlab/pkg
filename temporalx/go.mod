@@ -1,6 +1,6 @@
 module github.com/duynhlab/pkg/temporalx
 
-go 1.26.0
+go 1.26.7
 
 require (
 	go.temporal.io/sdk v1.48.0
