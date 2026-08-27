@@ -53,7 +53,15 @@ type Config struct {
 //
 // Transport is plaintext for in-cluster east-west traffic; mTLS is a later phase
 // (mirrors grpcx).
-func Dial(cfg Config) (client.Client, error) {
+func Dial(cfg Config, opts ...DialOption) (client.Client, error) {
+	for _, opt := range opts {
+		if opt == nil {
+			// WithLogger(nil) lands here. Erroring beats silently keeping the
+			// SDK's default stderr logger the caller meant to replace.
+			return nil, errors.New("temporalx: nil DialOption — WithLogger was given a nil logger")
+		}
+	}
+
 	if _, ok := otel.GetTracerProvider().(*temporalotel.ReplaySafeTracerProvider); !ok {
 		return nil, errors.New(
 			"temporalx: the global OTel tracer provider is not replay-safe; pass " +
@@ -77,11 +85,16 @@ func Dial(cfg Config) (client.Client, error) {
 		return nil, fmt.Errorf("temporalx: build opentelemetry-v2 plugin: %w", err)
 	}
 
-	c, err := client.Dial(client.Options{
+	options := client.Options{
 		HostPort:  cfg.HostPort,
 		Namespace: cfg.Namespace,
 		Plugins:   []client.Plugin{plugin},
-	})
+	}
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	c, err := client.Dial(options)
 	if err != nil {
 		return nil, fmt.Errorf("temporalx: dial %q (namespace %q): %w", cfg.HostPort, cfg.Namespace, err)
 	}
