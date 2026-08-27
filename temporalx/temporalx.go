@@ -1,20 +1,26 @@
 // Package temporalx provides thin, opinionated bootstrap helpers for connecting
 // to Temporal and running workers, mirroring grpcx/obsx so every service wires
-// Temporal the same way. It keeps OpenTelemetry tracing and metrics consistent
-// with the rest of the platform: workflow and activity spans join the same trace
-// as the gRPC/HTTP request that started the workflow (correlated through the
-// existing Tempo backend), and the SDK's workflow/activity RED metrics flow to
-// the same OpenTelemetry MeterProvider as everything else, surfacing on the
-// service's /metrics endpoint (see homelab/docs/api/temporal-order-fulfillment.md).
+// Temporal the same way. Telemetry rides the SDK's OpenTelemetry v2 integration
+// (ADR-063): one plugin carries tracing (replay-safe, corrected span parenting)
+// and the SDK's workflow/activity RED metrics (monotonic counters) to the same
+// global OTel providers everything else uses, exported over OTLP by obsx —
+// there is no scrape endpoint. Workflow code may create spans via Tracer,
+// which is replay-safe; plain otel.Tracer inside workflow code is not.
+//
+// contrib/opentelemetry-v2 is experimental (v0.1.x): its API may change
+// between releases. This package pins and wraps it so services never import
+// the contrib module directly.
 package temporalx
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 
+	"go.opentelemetry.io/otel"
 	"go.temporal.io/sdk/client"
-	"go.temporal.io/sdk/contrib/opentelemetry"
-	"go.temporal.io/sdk/interceptor"
+	temporalotel "go.temporal.io/sdk/contrib/opentelemetry-v2"
+	"go.temporal.io/sdk/interceptor/tracing"
 	"go.temporal.io/sdk/worker"
 )
 
@@ -27,40 +33,54 @@ type Config struct {
 	Namespace string
 }
 
-// Dial connects to the Temporal frontend with OpenTelemetry tracing and metrics
-// wired in.
+// Dial connects to the Temporal frontend with the OpenTelemetry v2 plugin
+// wired in (ADR-063).
 //
-// The tracing interceptor is registered on the client; workers created from this
-// client via NewWorker inherit the worker-side of the same interceptor, so a
-// single registration here covers both client calls and workflow/activity
-// execution. Its tracer is obtained from the global OpenTelemetry tracer
-// provider (which services already configure at startup), so no tracer needs to
-// be threaded through.
+// The plugin registers client- and worker-side tracing interceptors (workers
+// created from this client via NewWorker inherit them) plus the SDK metrics
+// handler, so a single registration covers client calls, workflow/activity
+// execution, and RED metrics. UseMonotonicCounters makes SDK counters export
+// as monotonic sums so rate()/increase() classify them correctly.
+// AllowInvalidParentSpans stays on while any caller in the fleet still runs
+// the v1 interceptor; tighten it once the fleet has converged.
 //
-// A Temporal SDK MetricsHandler is also registered, emitting the SDK's
-// workflow/activity RED metrics to the global OpenTelemetry MeterProvider that
-// obsx.SetupMetrics installs (Prometheus exporter on the default registry). They
-// surface on the service's existing /metrics endpoint — no extra port. If
-// obsx.SetupMetrics was not called, the global provider is a no-op, so this stays
-// safe to register unconditionally.
+// PRECONDITION: the OTel GLOBAL tracer provider must be the replay-safe one —
+// the service main passes NewReplaySafeTracerProvider through
+// obsx.WithTracerProviderFactory before calling Dial. The v2 plugin
+// type-asserts the global EAGERLY (it would panic inside NewPlugin); Dial
+// guards first and returns an actionable error instead, per this repo's
+// no-panics rule.
 //
 // Transport is plaintext for in-cluster east-west traffic; mTLS is a later phase
 // (mirrors grpcx).
 func Dial(cfg Config) (client.Client, error) {
-	tracing, err := opentelemetry.NewTracingInterceptor(opentelemetry.TracerOptions{})
+	if _, ok := otel.GetTracerProvider().(*temporalotel.ReplaySafeTracerProvider); !ok {
+		return nil, errors.New(
+			"temporalx: the global OTel tracer provider is not replay-safe; pass " +
+				"temporalx.NewReplaySafeTracerProvider through obsx.WithTracerProviderFactory " +
+				"before Dial (ADR-063)")
+	}
+
+	plugin, err := temporalotel.NewPlugin(temporalotel.PluginOptions{
+		TracerOptions: tracing.TracerOptions{
+			AddTemporalSpans:        true,
+			AllowInvalidParentSpans: true,
+		},
+		// OnError must never keep the default (panic): an instrument-creation
+		// error would crash the whole worker over telemetry.
+		MetricsHandlerOptions: &temporalotel.MetricsHandlerOptions{
+			UseMonotonicCounters: true,
+			OnError:              logMetricsError,
+		},
+	})
 	if err != nil {
-		return nil, fmt.Errorf("temporalx: build tracing interceptor: %w", err)
+		return nil, fmt.Errorf("temporalx: build opentelemetry-v2 plugin: %w", err)
 	}
 
 	c, err := client.Dial(client.Options{
-		HostPort:     cfg.HostPort,
-		Namespace:    cfg.Namespace,
-		Interceptors: []interceptor.ClientInterceptor{tracing},
-		// OnError must never keep the SDK default (panic): an instrument-
-		// creation error would crash the whole worker over telemetry.
-		MetricsHandler: opentelemetry.NewMetricsHandler(opentelemetry.MetricsHandlerOptions{
-			OnError: logMetricsError,
-		}),
+		HostPort:  cfg.HostPort,
+		Namespace: cfg.Namespace,
+		Plugins:   []client.Plugin{plugin},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("temporalx: dial %q (namespace %q): %w", cfg.HostPort, cfg.Namespace, err)

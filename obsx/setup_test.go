@@ -12,6 +12,7 @@ import (
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
 	"go.uber.org/zap"
@@ -478,4 +479,56 @@ func (c *capturingLogExporter) count() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.records
+}
+
+// fakeFactoryProvider is a minimal ShutdownTracerProvider with a distinct
+// concrete type, standing in for temporalx's ReplaySafeTracerProvider.
+type fakeFactoryProvider struct {
+	*sdktrace.TracerProvider
+}
+
+func TestSetupObservability_TracerProviderFactory(t *testing.T) {
+	ctx := context.Background()
+	exp := tracetest.NewInMemoryExporter()
+	var got []sdktrace.TracerProviderOption
+	obs, err := SetupObservability(ctx,
+		Config{ServiceName: "t", TracesEnabled: true, SampleRate: 1, ProfilingEnabled: true},
+		withSpanExporter(exp),
+		WithTracerProviderFactory(func(opts ...sdktrace.TracerProviderOption) ShutdownTracerProvider {
+			got = opts
+			return &fakeFactoryProvider{sdktrace.NewTracerProvider(opts...)}
+		}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = obs.Shutdown(ctx) })
+
+	if len(got) != 3 {
+		t.Fatalf("factory received %d options, want 3 (resource, sampler, batcher)", len(got))
+	}
+	if obs.TracerProvider != nil {
+		t.Error("TracerProvider must stay nil under a factory — its type is the stock provider")
+	}
+	global := otel.GetTracerProvider()
+	if _, ok := global.(*fakeFactoryProvider); !ok {
+		// ProfilingEnabled=true on purpose: the wrapper must be SKIPPED so the
+		// factory's concrete type survives as the global (the OTel v2 plugin
+		// type-asserts it).
+		t.Fatalf("global must be the factory's concrete type, got %T", global)
+	}
+	if obs.GlobalTracerProvider != global {
+		t.Error("GlobalTracerProvider must record what was installed")
+	}
+
+	_, span := global.Tracer("t").Start(ctx, "op")
+	span.End()
+	if err := global.(*fakeFactoryProvider).ForceFlush(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(exp.GetSpans()); n != 1 {
+		t.Fatalf("exported %d spans through the factory provider, want 1", n)
+	}
+	if err := obs.Shutdown(ctx); err != nil {
+		t.Fatalf("Shutdown must close the factory provider: %v", err)
+	}
 }
