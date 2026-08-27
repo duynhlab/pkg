@@ -41,8 +41,12 @@ type Config struct {
 // handler, so a single registration covers client calls, workflow/activity
 // execution, and RED metrics. UseMonotonicCounters makes SDK counters export
 // as monotonic sums so rate()/increase() classify them correctly.
-// AllowInvalidParentSpans stays on while any caller in the fleet still runs
-// the v1 interceptor; tighten it once the fleet has converged.
+// AllowInvalidParentSpans stays TRUE deliberately and permanently — decided
+// 2026-08-27, after the fleet converged. With false, a tracing header that
+// fails to parse errors out of the interceptor and FAILS the workflow task
+// (tracing_interceptor_v2.go parentFromHeader); with true the span starts
+// parentless and the workload is untouched. Same rule as OnError below:
+// telemetry must never take down the work it observes.
 //
 // PRECONDITION: the OTel GLOBAL tracer provider must be the replay-safe one —
 // the service main passes NewReplaySafeTracerProvider through
