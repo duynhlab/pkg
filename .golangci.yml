@@ -41,11 +41,20 @@ linters:
         # module may import only the API (go.opentelemetry.io/otel,
         # otel/trace, otel/metric) and contrib instrumentation. Tests are
         # exempt (in-memory exporters need the SDK).
+        #
+        # temporalx exemption (ADR-063, the human escalation this rule asks
+        # for): it re-exports the contrib module's replay-safe tracer-provider
+        # CONSTRUCTOR, whose signature takes sdktrace.TracerProviderOption —
+        # a type reference only. The SDK is still BUILT and INSTALLED solely
+        # by obsx (WithTracerProviderFactory supplies the options and sets the
+        # global); temporalx never constructs exporters, samplers, or readers.
         otel-sdk-only-in-obsx:
           files:
             - "!$test"
             - "!obsx/**"
             - "!**/obsx/**"
+            - "!temporalx/**"
+            - "!**/temporalx/**"
           deny:
             - pkg: go.opentelemetry.io/otel/sdk
               desc: the OTel SDK is wired in obsx only; import the API, not the SDK

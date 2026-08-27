@@ -145,17 +145,57 @@ type Observability struct {
 	LoggerProvider *sdklog.LoggerProvider
 	Resource       *resource.Resource
 
+	// GlobalTracerProvider is whatever was installed with otel.SetTracerProvider
+	// — the stock provider (possibly profiling-wrapped), or the
+	// WithTracerProviderFactory result. Unlike TracerProvider it is non-nil on
+	// every path where traces are enabled, so nil-checks about "are traces on"
+	// belong here.
+	GlobalTracerProvider trace.TracerProvider
+
+	factoryTracerProvider ShutdownTracerProvider
+
 	shutdowns []func(context.Context) error
 }
 
-// setupOption customizes SetupObservability internals; test-only for now
-// (reader/exporter injection keeps unit tests off the network).
+// setupOption customizes SetupObservability internals. The exporter/reader
+// injections are test-only; WithTracerProviderFactory is the one option meant
+// for production callers (Temporal services — see its doc).
 type setupOption func(*setupState)
 
 type setupState struct {
-	metricReader sdkmetric.Reader
-	spanExporter sdktrace.SpanExporter
-	logExporter  sdklog.Exporter
+	metricReader  sdkmetric.Reader
+	spanExporter  sdktrace.SpanExporter
+	logExporter   sdklog.Exporter
+	tracerFactory func(...sdktrace.TracerProviderOption) ShutdownTracerProvider
+}
+
+// ShutdownTracerProvider is what a WithTracerProviderFactory result must
+// satisfy: a usable tracer provider obsx can shut down with the other signals.
+type ShutdownTracerProvider interface {
+	trace.TracerProvider
+	Shutdown(context.Context) error
+}
+
+// WithTracerProviderFactory replaces the stock sdktrace.NewTracerProvider
+// constructor while obsx keeps owning the option set (Resource, sampler, OTLP
+// batcher), the shutdown ordering, and the global installation. It exists for
+// exactly one consumer class today: Temporal workers, whose OTel v2
+// integration requires the GLOBAL tracer provider to be the contrib module's
+// ReplaySafeTracerProvider — its interceptors and workflow Tracer type-assert
+// the global and panic on anything else. Service mains pass
+// temporalx.NewReplaySafeTracerProvider through this option; services without
+// Temporal never set it and nothing changes for them.
+//
+// Two deliberate consequences when the factory is set:
+//   - Observability.TracerProvider stays nil (its type is the stock SDK
+//     provider); read GlobalTracerProvider instead.
+//   - The otelpyroscope span→profile wrapper is SKIPPED even when
+//     cfg.ProfilingEnabled is true, because wrapping would change the global's
+//     concrete type and re-trigger the very panic this factory avoids. Profile
+//     COLLECTION (SetupProfiling) is unaffected — only the span→profile link
+//     attribute is lost on these services.
+func WithTracerProviderFactory(f func(...sdktrace.TracerProviderOption) ShutdownTracerProvider) setupOption {
+	return func(s *setupState) { s.tracerFactory = f }
 }
 
 func withMetricReader(r sdkmetric.Reader) setupOption {
@@ -207,13 +247,20 @@ func SetupObservability(ctx context.Context, cfg Config, opts ...setupOption) (*
 		if !(rate >= 0 && rate <= 1) {
 			rate = 0.1
 		}
-		tp := sdktrace.NewTracerProvider(
+		tpOpts := []sdktrace.TracerProviderOption{
 			sdktrace.WithResource(res),
 			sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(rate))),
 			sdktrace.WithBatcher(exp),
-		)
-		obs.TracerProvider = tp
-		obs.shutdowns = append(obs.shutdowns, tp.Shutdown)
+		}
+		if st.tracerFactory != nil {
+			ftp := st.tracerFactory(tpOpts...)
+			obs.factoryTracerProvider = ftp
+			obs.shutdowns = append(obs.shutdowns, ftp.Shutdown)
+		} else {
+			tp := sdktrace.NewTracerProvider(tpOpts...)
+			obs.TracerProvider = tp
+			obs.shutdowns = append(obs.shutdowns, tp.Shutdown)
+		}
 	}
 
 	if cfg.MetricsEnabled {
@@ -266,12 +313,19 @@ func SetupObservability(ctx context.Context, cfg Config, opts ...setupOption) (*
 	// partial failure above therefore never leaves an already-shut-down
 	// provider installed as a global (which would silently drop every span
 	// for the process lifetime while the service keeps serving).
-	if obs.TracerProvider != nil {
-		var tp trace.TracerProvider = obs.TracerProvider
-		if cfg.ProfilingEnabled {
-			tp = TracerProviderWithProfiles(tp)
+	if obs.TracerProvider != nil || obs.factoryTracerProvider != nil {
+		var tp trace.TracerProvider
+		if obs.factoryTracerProvider != nil {
+			// No profiling wrap here on purpose — see WithTracerProviderFactory.
+			tp = obs.factoryTracerProvider
+		} else {
+			tp = obs.TracerProvider
+			if cfg.ProfilingEnabled {
+				tp = TracerProviderWithProfiles(tp)
+			}
 		}
 		otel.SetTracerProvider(tp)
+		obs.GlobalTracerProvider = tp
 		otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
 			propagation.TraceContext{}, propagation.Baggage{},
 		))
