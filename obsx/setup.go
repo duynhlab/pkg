@@ -25,7 +25,9 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	otellog "go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/log/global"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -137,36 +139,89 @@ func ConfigFromEnv() Config {
 	}
 }
 
-// Observability holds the providers built by SetupObservability. Providers
-// for disabled signals are nil.
+// Observability holds the providers built by SetupObservability. Its exported
+// surface speaks OpenTelemetry API types only (RFC-0031 / ADR-072, the
+// shared-package rule): a service imports obsx and the API, never the SDK.
+// The SDK providers stay unexported so that Shutdown, ForceFlush-in-tests and
+// the profiling wrapper remain obsx's business.
 type Observability struct {
-	TracerProvider *sdktrace.TracerProvider
-	MeterProvider  *sdkmetric.MeterProvider
-	LoggerProvider *sdklog.LoggerProvider
-	Resource       *resource.Resource
+	tracerProvider *sdktrace.TracerProvider
+	meterProvider  *sdkmetric.MeterProvider
+	loggerProvider *sdklog.LoggerProvider
+	res            *resource.Resource
 
-	// GlobalTracerProvider is whatever was installed with otel.SetTracerProvider
+	// globalTracerProvider is whatever was installed with otel.SetTracerProvider
 	// — the stock provider (possibly profiling-wrapped), or the
-	// WithTracerProviderFactory result. Unlike TracerProvider it is non-nil on
+	// WithTracerProviderFactory result. Unlike tracerProvider it is non-nil on
 	// every path where traces are enabled, so nil-checks about "are traces on"
 	// belong here.
-	GlobalTracerProvider trace.TracerProvider
+	globalTracerProvider trace.TracerProvider
 
 	factoryTracerProvider ShutdownTracerProvider
 
 	shutdowns []func(context.Context) error
 }
 
-// setupOption customizes SetupObservability internals. The exporter/reader
-// injections are test-only; WithTracerProviderFactory is the one option meant
-// for production callers (Temporal services — see its doc).
-type setupOption func(*setupState)
+// Signals reports which signals SetupObservability built. It replaces the
+// pre-v0.39 pattern of nil-checking the exported SDK providers in main().
+type Signals struct {
+	Traces  bool
+	Metrics bool
+	Logs    bool
+}
+
+// Enabled reports which signals were built. Safe on a nil receiver.
+func (o *Observability) Enabled() Signals {
+	if o == nil {
+		return Signals{}
+	}
+	return Signals{
+		Traces:  o.globalTracerProvider != nil,
+		Metrics: o.meterProvider != nil,
+		Logs:    o.loggerProvider != nil,
+	}
+}
+
+// TracerProvider returns the tracer provider installed as the OTel global —
+// the stock SDK provider, its profiling wrapper, or the
+// WithTracerProviderFactory result — as the API type. It is nil (a true nil,
+// not a typed nil in an interface) when traces are disabled.
+func (o *Observability) TracerProvider() trace.TracerProvider {
+	if o == nil || o.globalTracerProvider == nil {
+		return nil
+	}
+	return o.globalTracerProvider
+}
+
+// MeterProvider returns the installed meter provider as the API type, or nil
+// when metrics are disabled.
+func (o *Observability) MeterProvider() metric.MeterProvider {
+	if o == nil || o.meterProvider == nil {
+		return nil
+	}
+	return o.meterProvider
+}
+
+// LoggerProvider returns the installed logger provider as the API type, or nil
+// when logs are disabled. Log bridges built outside obsx (the RFC-0031 slogx
+// facade) take it from here or from the otel/log/global it is installed into.
+func (o *Observability) LoggerProvider() otellog.LoggerProvider {
+	if o == nil || o.loggerProvider == nil {
+		return nil
+	}
+	return o.loggerProvider
+}
+
+// SetupOption customizes SetupObservability. The exporter/reader injections
+// are unexported and test-only; WithTracerProviderFactory is the one option
+// meant for production callers (Temporal services — see its doc).
+type SetupOption func(*setupState)
 
 type setupState struct {
 	metricReader  sdkmetric.Reader
 	spanExporter  sdktrace.SpanExporter
 	logExporter   sdklog.Exporter
-	tracerFactory func(...sdktrace.TracerProviderOption) ShutdownTracerProvider
+	tracerFactory TracerProviderFactory
 }
 
 // ShutdownTracerProvider is what a WithTracerProviderFactory result must
@@ -176,37 +231,71 @@ type ShutdownTracerProvider interface {
 	Shutdown(context.Context) error
 }
 
+// TracerProviderConfig carries the option set obsx assembled for the stock
+// tracer provider — Resource, ParentBased sampler, OTLP batcher — to a
+// WithTracerProviderFactory. It is opaque so that a service main never names
+// an SDK type; the one way to read it is SDKOptions, below.
+type TracerProviderConfig struct {
+	opts []sdktrace.TracerProviderOption
+}
+
+// SDKOptions returns a copy of the assembled SDK options. It is the single,
+// deliberate place where an SDK type crosses obsx's exported surface, and it
+// exists for exactly one caller shape: forwarding into a constructor that
+// itself takes sdktrace.TracerProviderOption, such as
+// temporalx.NewReplaySafeTracerProvider. Used as
+//
+//	obsx.WithTracerProviderFactory(func(c obsx.TracerProviderConfig) obsx.ShutdownTracerProvider {
+//		return temporalx.NewReplaySafeTracerProvider(c.SDKOptions()...)
+//	})
+//
+// the calling package imports neither go.opentelemetry.io/otel/sdk nor any
+// SDK type: Go infers the variadic element type. The SDK is still BUILT only
+// here (the options) and in temporalx (the constructor the layering rules
+// already exempt, ADR-063); the service forwards a value it cannot inspect.
+func (c TracerProviderConfig) SDKOptions() []sdktrace.TracerProviderOption {
+	return append([]sdktrace.TracerProviderOption(nil), c.opts...)
+}
+
+// TracerProviderFactory builds the tracer provider obsx installs as the OTel
+// global, from the option set obsx assembled. See WithTracerProviderFactory.
+type TracerProviderFactory func(TracerProviderConfig) ShutdownTracerProvider
+
 // WithTracerProviderFactory replaces the stock sdktrace.NewTracerProvider
 // constructor while obsx keeps owning the option set (Resource, sampler, OTLP
 // batcher), the shutdown ordering, and the global installation. It exists for
 // exactly one consumer class today: Temporal workers, whose OTel v2
 // integration requires the GLOBAL tracer provider to be the contrib module's
 // ReplaySafeTracerProvider — its interceptors and workflow Tracer type-assert
-// the global and panic on anything else. Service mains pass
-// temporalx.NewReplaySafeTracerProvider through this option; services without
-// Temporal never set it and nothing changes for them.
+// the global and panic on anything else. Service mains forward
+// TracerProviderConfig.SDKOptions into temporalx.NewReplaySafeTracerProvider;
+// services without Temporal never set it and nothing changes for them.
 //
 // Two deliberate consequences when the factory is set:
-//   - Observability.TracerProvider stays nil (its type is the stock SDK
-//     provider); read GlobalTracerProvider instead.
+//   - The stock SDK provider is never built; TracerProvider() returns the
+//     factory's provider (it is what was installed as the global).
 //   - The otelpyroscope span→profile wrapper is SKIPPED even when
 //     cfg.ProfilingEnabled is true, because wrapping would change the global's
 //     concrete type and re-trigger the very panic this factory avoids. Profile
 //     COLLECTION (SetupProfiling) is unaffected — only the span→profile link
 //     attribute is lost on these services.
-func WithTracerProviderFactory(f func(...sdktrace.TracerProviderOption) ShutdownTracerProvider) setupOption {
+//
+// Breaking in obsx v0.39.0: the factory used to take
+// (...sdktrace.TracerProviderOption); it now takes TracerProviderConfig so
+// that no service imports the SDK to call obsx.
+func WithTracerProviderFactory(f TracerProviderFactory) SetupOption {
 	return func(s *setupState) { s.tracerFactory = f }
 }
 
-func withMetricReader(r sdkmetric.Reader) setupOption {
+func withMetricReader(r sdkmetric.Reader) SetupOption {
 	return func(s *setupState) { s.metricReader = r }
 }
 
-func withSpanExporter(e sdktrace.SpanExporter) setupOption {
+func withSpanExporter(e sdktrace.SpanExporter) SetupOption {
 	return func(s *setupState) { s.spanExporter = e }
 }
 
-func withLogExporter(e sdklog.Exporter) setupOption {
+func withLogExporter(e sdklog.Exporter) SetupOption {
 	return func(s *setupState) { s.logExporter = e }
 }
 
@@ -216,7 +305,7 @@ func withLogExporter(e sdklog.Exporter) setupOption {
 // instrumentation (otelgin, otelgrpc, Temporal SDK, log bridges) picks them
 // up without further wiring. opts are internal (test injection); external
 // callers pass none.
-func SetupObservability(ctx context.Context, cfg Config, opts ...setupOption) (*Observability, error) {
+func SetupObservability(ctx context.Context, cfg Config, opts ...SetupOption) (*Observability, error) {
 	if cfg.ServiceName == "" {
 		return nil, errors.New("obsx: Config.ServiceName is required")
 	}
@@ -226,7 +315,7 @@ func SetupObservability(ctx context.Context, cfg Config, opts ...setupOption) (*
 	}
 
 	res := buildResource(ctx, cfg)
-	obs := &Observability{Resource: res}
+	obs := &Observability{res: res}
 
 	if cfg.TracesEnabled {
 		exp := st.spanExporter
@@ -253,12 +342,12 @@ func SetupObservability(ctx context.Context, cfg Config, opts ...setupOption) (*
 			sdktrace.WithBatcher(exp),
 		}
 		if st.tracerFactory != nil {
-			ftp := st.tracerFactory(tpOpts...)
+			ftp := st.tracerFactory(TracerProviderConfig{opts: tpOpts})
 			obs.factoryTracerProvider = ftp
 			obs.shutdowns = append(obs.shutdowns, ftp.Shutdown)
 		} else {
 			tp := sdktrace.NewTracerProvider(tpOpts...)
-			obs.TracerProvider = tp
+			obs.tracerProvider = tp
 			obs.shutdowns = append(obs.shutdowns, tp.Shutdown)
 		}
 	}
@@ -284,7 +373,7 @@ func SetupObservability(ctx context.Context, cfg Config, opts ...setupOption) (*
 		if err := runtime.Start(runtime.WithMeterProvider(mp)); err != nil {
 			return nil, errors.Join(fmt.Errorf("obsx: start runtime instrumentation: %w", err), mp.Shutdown(ctx), obs.Shutdown(ctx))
 		}
-		obs.MeterProvider = mp
+		obs.meterProvider = mp
 		obs.shutdowns = append(obs.shutdowns, mp.Shutdown)
 	}
 
@@ -305,7 +394,7 @@ func SetupObservability(ctx context.Context, cfg Config, opts ...setupOption) (*
 			sdklog.WithResource(res),
 			sdklog.WithProcessor(sdklog.NewBatchProcessor(exp)),
 		)
-		obs.LoggerProvider = lp
+		obs.loggerProvider = lp
 		obs.shutdowns = append(obs.shutdowns, lp.Shutdown)
 	}
 
@@ -313,28 +402,28 @@ func SetupObservability(ctx context.Context, cfg Config, opts ...setupOption) (*
 	// partial failure above therefore never leaves an already-shut-down
 	// provider installed as a global (which would silently drop every span
 	// for the process lifetime while the service keeps serving).
-	if obs.TracerProvider != nil || obs.factoryTracerProvider != nil {
+	if obs.tracerProvider != nil || obs.factoryTracerProvider != nil {
 		var tp trace.TracerProvider
 		if obs.factoryTracerProvider != nil {
 			// No profiling wrap here on purpose — see WithTracerProviderFactory.
 			tp = obs.factoryTracerProvider
 		} else {
-			tp = obs.TracerProvider
+			tp = obs.tracerProvider
 			if cfg.ProfilingEnabled {
 				tp = TracerProviderWithProfiles(tp)
 			}
 		}
 		otel.SetTracerProvider(tp)
-		obs.GlobalTracerProvider = tp
+		obs.globalTracerProvider = tp
 		otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
 			propagation.TraceContext{}, propagation.Baggage{},
 		))
 	}
-	if obs.MeterProvider != nil {
-		otel.SetMeterProvider(obs.MeterProvider)
+	if obs.meterProvider != nil {
+		otel.SetMeterProvider(obs.meterProvider)
 	}
-	if obs.LoggerProvider != nil {
-		global.SetLoggerProvider(obs.LoggerProvider)
+	if obs.loggerProvider != nil {
+		global.SetLoggerProvider(obs.loggerProvider)
 	}
 
 	return obs, nil
@@ -357,6 +446,11 @@ func exportInterval(d time.Duration) time.Duration {
 // disabled. scopeName is the instrumentation scope, typically the service
 // name.
 //
+// Deprecated: ZapCore and TraceContext are the last Zap types on obsx's
+// exported surface. They stay until the RFC-0031 slogx facade (ADR-070) owns
+// the OTLP log bridge, then leave in the same obsx release; services should
+// not add new callers.
+//
 // min gates the bridge to the service's configured level. This is not
 // cosmetic: the raw otelzap core enables EVERY level (the SDK logger has no
 // level concept), and under zapcore.NewTee each core gates independently — an
@@ -364,12 +458,12 @@ func exportInterval(d time.Duration) time.Duration {
 // Info-level stdout core, and debug statements are exactly where payload and
 // token dumps hide.
 func (o *Observability) ZapCore(scopeName string, min zapcore.Level) zapcore.Core {
-	if o == nil || o.LoggerProvider == nil {
+	if o == nil || o.loggerProvider == nil {
 		// A no-op core (never nil) lets every caller tee unconditionally:
 		// zapcore.NewTee(stdoutCore, obs.ZapCore(name, lvl)).
 		return zapcore.NewNopCore()
 	}
-	core := otelzap.NewCore(scopeName, otelzap.WithLoggerProvider(o.LoggerProvider))
+	core := otelzap.NewCore(scopeName, otelzap.WithLoggerProvider(o.loggerProvider))
 	leveled, err := zapcore.NewIncreaseLevelCore(core, min)
 	if err != nil {
 		// Unreachable with the all-levels otelzap core; keep the gated intent
