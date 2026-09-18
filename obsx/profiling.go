@@ -2,13 +2,14 @@ package obsx
 
 // SetupProfiling wires Grafana Pyroscope continuous profiling for a service.
 //
-// Identity is OTel-aligned: the Pyroscope application name (which becomes the
-// `service_name` series in Pyroscope v1) is read from OTEL_SERVICE_NAME — the
-// same value the tracing SDK uses for service.name — so profiles, traces, and
-// metrics share one identity in Grafana. Extra labels are derived from
-// OTEL_RESOURCE_ATTRIBUTES and emitted with underscores (Pyroscope labels must
-// match [a-zA-Z_][a-zA-Z0-9_]*; dots are invalid), mirroring the OTel resource
-// attributes service.namespace / deployment.environment / service.version.
+// Identity is the OTel resource, not a second parse of the environment: the
+// Pyroscope application name (the `service_name` series) and the three labels
+// come from resourceAttributes(ConfigFromEnv()) — the same list the tracer,
+// meter and logger provider build — so a profile is found from a span by the
+// same service.name, service.namespace, deployment.environment.name and
+// service.version, and an attribute missing on one signal is missing on all
+// (RFC-0031 Task 1.4, ADR-074). Labels are emitted with underscores because
+// Pyroscope label names must match [a-zA-Z_][a-zA-Z0-9_]*.
 //
 // The four mutex/block profile types collect nothing unless the Go runtime
 // sampling rates are turned on, so SetupProfiling sets low-overhead production
@@ -20,23 +21,30 @@ import (
 	"log"
 	"os"
 	"runtime"
-	"strings"
 	"sync"
 
 	otelpyroscope "github.com/grafana/otel-profiling-go"
 	"github.com/grafana/pyroscope-go"
+	"go.opentelemetry.io/otel/attribute"
+	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
-const unknownService = "unknown-service"
-
-// Production-safe Go runtime profiling rates (see runtime docs):
-//   - mutex: report ~1 of every N contention events (1% sampling).
-//   - block: record every blocking event whose duration is ≥ N nanoseconds
-//     (here one per 100ms blocked).
+// Process-global runtime sampling rates, set once after a successful profiler
+// start (RFC-0031 profiling contract: central, budgeted, never per service).
 //
-// Both default to 0 (disabled), which would make the mutex/block profile types
-// ship empty. Drop these far lower only for targeted, short investigations.
+//   - mutexProfileFraction 100: one in a hundred contended mutex events is
+//     sampled. The Go runtime's cost is proportional to contention, not to
+//     lock operations, so an uncontended service pays ~0; a contended one pays
+//     one stack capture per hundred contention events.
+//   - blockProfileRateNanos 100ms: only blocking events of at least 100 ms are
+//     recorded (shorter ones are sampled proportionally). Channel and select
+//     waits under that threshold — the common case in request handlers — are
+//     essentially free.
+//
+// Changing either is a fleet-wide overhead change: it needs a benchmark under
+// the service's real lock profile and a review of the overhead budget in
+// docs/api/profiling.md, not a local edit.
 const (
 	mutexProfileFraction  = 100
 	blockProfileRateNanos = 100_000_000
@@ -55,6 +63,11 @@ var (
 // Pyroscope endpoint comes from PYROSCOPE_ENDPOINT. It returns an error (rather
 // than silently no-op'ing) when profiling is enabled but PYROSCOPE_ENDPOINT is
 // unset, so misconfiguration is visible to the caller.
+//
+// Identity is read through ConfigFromEnv, so the "same resource as the other
+// signals" guarantee holds for a service that also hands ConfigFromEnv() to
+// SetupObservability — which every deployed service does. A hand-built Config
+// passed to SetupObservability would not be seen here.
 func SetupProfiling() (func(context.Context) error, error) {
 	profileOnce.Do(func() { profiler, profileErr = startProfiler() })
 	if profileErr != nil {
@@ -74,11 +87,16 @@ func startProfiler() (*pyroscope.Profiler, error) {
 		return nil, errors.New("PYROSCOPE_ENDPOINT is not set")
 	}
 
+	// Identity comes from the same list every other signal uses (RFC-0031
+	// Task 1.4): resourceAttributes(ConfigFromEnv()) — so a profile can be
+	// found from a span by the same service.name / namespace / version /
+	// environment, and an attribute missing on one is missing on all.
+	cfg := ConfigFromEnv()
 	p, err := pyroscope.Start(pyroscope.Config{
-		ApplicationName: serviceNameFromEnv(),
+		ApplicationName: cfg.ServiceName,
 		ServerAddress:   endpoint,
 		Logger:          pyroErrorLogger{}, // surface upload failures (otherwise silent)
-		Tags:            profilingTags(),
+		Tags:            profilingTags(resourceAttributes(cfg)),
 		ProfileTypes: []pyroscope.ProfileType{
 			pyroscope.ProfileCPU,
 			pyroscope.ProfileAllocObjects,
@@ -131,47 +149,35 @@ func TracerProviderWithProfiles(tp trace.TracerProvider) trace.TracerProvider {
 	return otelpyroscope.NewTracerProvider(tp)
 }
 
-// serviceNameFromEnv resolves the profiling application name from
-// OTEL_SERVICE_NAME, falling back to the hostname and then a sentinel.
-func serviceNameFromEnv() string {
-	host, _ := os.Hostname()
-	return resolveServiceName(os.Getenv("OTEL_SERVICE_NAME"), host)
-}
-
-// resolveServiceName picks OTEL_SERVICE_NAME, then the hostname, then a
-// sentinel. Split out from env access so every branch is unit-testable.
-func resolveServiceName(otelName, hostname string) string {
-	if otelName != "" {
-		return otelName
-	}
-	if hostname != "" {
-		return hostname
-	}
-	return unknownService
-}
-
 // endpointFromEnv resolves the Pyroscope server address from PYROSCOPE_ENDPOINT.
 func endpointFromEnv() string {
 	return os.Getenv("PYROSCOPE_ENDPOINT")
 }
 
-// profilingTags parses OTEL_RESOURCE_ATTRIBUTES once and maps the relevant
-// attributes to underscored Pyroscope labels. Duplicate keys follow the OTel
-// convention of last-wins; malformed or empty entries are skipped.
-func profilingTags() map[string]string {
-	attrs := map[string]string{}
-	for _, kv := range strings.Split(os.Getenv("OTEL_RESOURCE_ATTRIBUTES"), ",") {
-		if k, v, ok := strings.Cut(strings.TrimSpace(kv), "="); ok && v != "" {
-			attrs[k] = v // last wins
-		}
-	}
+// profilingTags maps the shared resource attributes to the CLOSED set of
+// Pyroscope labels the contract admits: service_namespace,
+// deployment_environment and service_version (service_name is the profile's
+// application name). Nothing else from the resource becomes a label — pod,
+// instance id and Kubernetes identity stay on spans, metrics and logs where
+// their cardinality is bounded by the store; on a profile they would multiply
+// series per pod restart. The SDK adds span_name on span-scoped CPU profiles
+// and pyroscope_spy on every profile; both are admitted by the contract and
+// are not this function's business.
+func profilingTags(attrs []attribute.KeyValue) map[string]string {
 	tags := map[string]string{}
-	for label, key := range map[string]string{
-		"service_namespace":      "service.namespace",
-		"deployment_environment": "deployment.environment",
-		"service_version":        "service.version",
-	} {
-		if v := attrs[key]; v != "" {
+	for _, kv := range attrs {
+		var label string
+		switch kv.Key {
+		case semconv.ServiceNamespaceKey:
+			label = "service_namespace"
+		case semconv.DeploymentEnvironmentNameKey:
+			label = "deployment_environment"
+		case semconv.ServiceVersionKey:
+			label = "service_version"
+		default:
+			continue
+		}
+		if v := kv.Value.String(); v != "" {
 			tags[label] = v
 		}
 	}

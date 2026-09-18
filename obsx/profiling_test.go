@@ -5,78 +5,16 @@ import (
 	"errors"
 	"testing"
 
+	"go.opentelemetry.io/otel/attribute"
+	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
+
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
 )
-
-func TestServiceNameFromEnv(t *testing.T) {
-	t.Setenv("OTEL_SERVICE_NAME", "auth-service")
-	if got := serviceNameFromEnv(); got != "auth-service" {
-		t.Fatalf("serviceNameFromEnv() = %q, want auth-service", got)
-	}
-}
-
-func TestServiceNameFromEnv_FallsBackWhenUnset(t *testing.T) {
-	t.Setenv("OTEL_SERVICE_NAME", "")
-	// Falls back to hostname (or the sentinel); must never be empty.
-	if got := serviceNameFromEnv(); got == "" {
-		t.Fatal("serviceNameFromEnv() returned empty string")
-	}
-}
-
-func TestResolveServiceName(t *testing.T) {
-	cases := []struct {
-		name, otel, host, want string
-	}{
-		{"otel wins", "auth-service", "auth-7c9-x", "auth-service"},
-		{"hostname fallback", "", "auth-7c9-x", "auth-7c9-x"},
-		{"sentinel when both empty", "", "", unknownService},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			if got := resolveServiceName(c.otel, c.host); got != c.want {
-				t.Fatalf("resolveServiceName(%q,%q) = %q, want %q", c.otel, c.host, got, c.want)
-			}
-		})
-	}
-}
 
 func TestEndpointFromEnv(t *testing.T) {
 	t.Setenv("PYROSCOPE_ENDPOINT", "http://pyroscope.example:4040")
 	if got := endpointFromEnv(); got != "http://pyroscope.example:4040" {
 		t.Fatalf("endpointFromEnv() = %q, want the env value", got)
-	}
-}
-
-func TestProfilingTags(t *testing.T) {
-	// Spaces are trimmed; the duplicate service.namespace must be last-wins.
-	t.Setenv("OTEL_RESOURCE_ATTRIBUTES",
-		"service.namespace=identity, deployment.environment=prod ,service.version=v1.2.3,service.namespace=catalog")
-
-	got := profilingTags()
-	want := map[string]string{
-		"service_namespace":      "catalog",
-		"deployment_environment": "prod",
-		"service_version":        "v1.2.3",
-	}
-	if len(got) != len(want) {
-		t.Fatalf("profilingTags() = %v, want %v", got, want)
-	}
-	for k, v := range want {
-		if got[k] != v {
-			t.Errorf("tags[%q] = %q, want %q", k, got[k], v)
-		}
-	}
-}
-
-func TestProfilingTags_EmptyAndMalformed(t *testing.T) {
-	t.Setenv("OTEL_RESOURCE_ATTRIBUTES", "")
-	if got := profilingTags(); len(got) != 0 {
-		t.Fatalf("expected no tags from empty env, got %v", got)
-	}
-	// no '=', empty value, and unmapped keys are all skipped.
-	t.Setenv("OTEL_RESOURCE_ATTRIBUTES", "garbage,service.version=,cloud.region=us-east-1")
-	if got := profilingTags(); len(got) != 0 {
-		t.Fatalf("expected no mapped tags, got %v", got)
 	}
 }
 
@@ -154,5 +92,72 @@ func TestSetupProfiling(t *testing.T) {
 	}
 	if err := stop(context.Background()); err != nil {
 		t.Fatalf("shutdown: %v", err)
+	}
+}
+
+// The profiler's labels come from the SAME resource list as the tracer and
+// meter (RFC-0031 Task 1.4). Before this the helper re-parsed
+// OTEL_RESOURCE_ATTRIBUTES on its own and looked for the retired key
+// deployment.environment, which no manifest sets — so deployment_environment
+// was empty on every profile while the spans of the same process carried
+// deployment.environment.name.
+func TestProfilingTags_FromSharedResource(t *testing.T) {
+	t.Setenv("OTEL_SERVICE_NAME", "order")
+	// The retired key deployment.environment=stale is what the old parser
+	// looked for; it must be ignored. SERVICE_VERSION is the Config source and
+	// wins over the env list, which proves the shared precedence, not a copy.
+	t.Setenv("OTEL_RESOURCE_ATTRIBUTES", "service.namespace=order,service.instance.id=order-abc,service.version=from-env,deployment.environment=stale")
+	t.Setenv("SERVICE_VERSION", "2.7.2")
+	t.Setenv("K8S_NAMESPACE_NAME", "order")
+	t.Setenv("K8S_POD_NAME", "order-abc")
+	t.Setenv("DEPLOYMENT_ENVIRONMENT", "production")
+
+	got := profilingTags(resourceAttributes(ConfigFromEnv()))
+	want := map[string]string{
+		"service_namespace":      "order",
+		"deployment_environment": "production",
+		"service_version":        "2.7.2",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("tags = %v, want exactly the closed set %v (no pod, instance or k8s labels)", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("tags[%q] = %q, want %q", k, got[k], v)
+		}
+	}
+}
+
+func TestProfilingTags_EmptyWhenIdentityIsMissing(t *testing.T) {
+	for _, k := range []string{"OTEL_RESOURCE_ATTRIBUTES", "K8S_NAMESPACE_NAME", "K8S_POD_NAME", "DEPLOYMENT_ENVIRONMENT"} {
+		t.Setenv(k, "")
+	}
+	if got := profilingTags(resourceAttributes(Config{ServiceName: "t"})); len(got) != 0 {
+		t.Fatalf("tags = %v, want none when only service.name is known", got)
+	}
+}
+
+// profilingTags is a pure function of the attribute list: the closed set is
+// the three labels below and nothing else, whatever else the resource carries.
+func TestProfilingTags_ClosedSet(t *testing.T) {
+	got := profilingTags([]attribute.KeyValue{
+		semconv.ServiceName("order"),
+		semconv.ServiceNamespace("order"),
+		semconv.ServiceVersion("2.7.2"),
+		semconv.DeploymentEnvironmentNameKey.String("production"),
+		attribute.String("deployment.environment", "stale"), // the retired key
+		semconv.K8SPodName("order-abc"),
+		semconv.K8SNamespaceName("order"),
+		semconv.ServiceInstanceID("order-abc"),
+		attribute.String("cloud.region", "hn"),
+	})
+	want := map[string]string{"service_namespace": "order", "deployment_environment": "production", "service_version": "2.7.2"}
+	if len(got) != len(want) {
+		t.Fatalf("tags = %v, want exactly %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("tags[%q] = %q, want %q", k, got[k], v)
+		}
 	}
 }
