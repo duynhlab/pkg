@@ -2,6 +2,7 @@ package obsx
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/propagation"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -468,6 +470,7 @@ func TestSetupObservability_RealExporterConstruction(t *testing.T) {
 }
 
 func TestBuildResource_KubernetesIdentity(t *testing.T) {
+	t.Setenv("OTEL_RESOURCE_ATTRIBUTES", "") // hermetic: buildResource reads it since Task 1.2
 	t.Setenv("K8S_NAMESPACE_NAME", "order")
 	t.Setenv("K8S_POD_NAME", "order-abc123")
 	t.Setenv("DEPLOYMENT_ENVIRONMENT", "local")
@@ -566,5 +569,102 @@ func TestSetupObservability_TracerProviderFactory(t *testing.T) {
 	}
 	if err := obs.Shutdown(ctx); err != nil {
 		t.Fatalf("Shutdown must close the factory provider: %v", err)
+	}
+}
+
+func TestSetupObservability_PropagatorInstalledWithoutTraces(t *testing.T) {
+	// RFC-0031 Task 1.2: a process that exports no spans must still forward
+	// W3C trace context, or one TRACING_ENABLED=false hop breaks every trace
+	// downstream of it. Before this test the propagator was only installed
+	// inside the traces branch.
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator()) // reset to an empty one
+	ctx := context.Background()
+	obs, err := SetupObservability(ctx, Config{ServiceName: "t"}) // every signal off
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = obs.Shutdown(ctx) })
+
+	fields := otel.GetTextMapPropagator().Fields()
+	var hasTraceparent, hasBaggage bool
+	for _, f := range fields {
+		hasTraceparent = hasTraceparent || f == "traceparent"
+		hasBaggage = hasBaggage || f == "baggage"
+	}
+	if !hasTraceparent || !hasBaggage {
+		t.Fatalf("propagator fields = %v, want traceparent and baggage with traces disabled", fields)
+	}
+
+	// The real hop: transport instrumentation extracts the incoming context,
+	// starts a span on the GLOBAL provider — a noop provider here, since
+	// traces are off — and injects from the span's context on the way out.
+	// The noop tracer keeps a remote parent, so the same trace id must leave.
+	carrier := propagation.MapCarrier{"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"}
+	extracted := otel.GetTextMapPropagator().Extract(ctx, carrier)
+	spanCtx, span := otel.Tracer("t").Start(extracted, "op")
+	defer span.End()
+	out := propagation.MapCarrier{}
+	otel.GetTextMapPropagator().Inject(spanCtx, out)
+	if !strings.HasPrefix(out["traceparent"], "00-4bf92f3577b34da6a3ce929d0e0e4736-") {
+		t.Fatalf("trace id not forwarded through a noop span without traces: got %q", out["traceparent"])
+	}
+}
+
+func TestResourceAttributes_Precedence(t *testing.T) {
+	// OTEL_RESOURCE_ATTRIBUTES is the lowest source: the manifest-level
+	// Downward-API variables and Config override the same keys, and the
+	// standard list's own duplicates resolve last-wins.
+	t.Setenv("OTEL_RESOURCE_ATTRIBUTES", " service.version=from-env , service.namespace=env-ns,service.instance.id=pod-1, ,bogus,=nokey,empty=,service.instance.id=pod-2,host.name=node%20a,cloud.region=bad%zz")
+	t.Setenv("K8S_NAMESPACE_NAME", "order")
+	t.Setenv("K8S_POD_NAME", "order-abc123")
+	t.Setenv("DEPLOYMENT_ENVIRONMENT", "local")
+
+	got := map[attribute.Key]string{}
+	for _, kv := range resourceAttributes(Config{ServiceName: "order", ServiceVersion: "1.2.3"}) {
+		if _, dup := got[kv.Key]; dup {
+			t.Errorf("attribute %s emitted twice", kv.Key)
+		}
+		got[kv.Key] = kv.Value.AsString()
+	}
+	want := map[attribute.Key]string{
+		semconv.ServiceNameKey:               "order",
+		semconv.ServiceVersionKey:            "1.2.3", // Config beats OTEL_RESOURCE_ATTRIBUTES
+		semconv.ServiceNamespaceKey:          "order", // K8S_NAMESPACE_NAME beats OTEL_RESOURCE_ATTRIBUTES
+		semconv.K8SNamespaceNameKey:          "order",
+		semconv.K8SPodNameKey:                "order-abc123",
+		semconv.DeploymentEnvironmentNameKey: "local",
+		semconv.ServiceInstanceIDKey:         "pod-2",  // last wins inside the env list
+		attribute.Key("host.name"):           "node a", // percent-decoded like the SDK detector
+		attribute.Key("cloud.region"):        "bad%zz", // undecodable → raw value kept, as the SDK does
+	}
+	// "=nokey" (empty key) and "empty=" (empty value) must produce nothing.
+	if len(got) != len(want) {
+		t.Errorf("attribute set = %v, want exactly %d keys (the contract lists them)", got, len(want))
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("attr[%s] = %q, want %q", k, got[k], v)
+		}
+	}
+}
+
+func TestResourceAttributes_EnvFillsWhatConfigLeavesEmpty(t *testing.T) {
+	// The worker manifests put service.version into OTEL_RESOURCE_ATTRIBUTES
+	// (from the build-id label) and leave SERVICE_VERSION unset; that value
+	// must survive, and unset Downward-API variables must add nothing.
+	t.Setenv("OTEL_RESOURCE_ATTRIBUTES", "service.version=build-7")
+	t.Setenv("K8S_NAMESPACE_NAME", "")
+	t.Setenv("K8S_POD_NAME", "")
+	t.Setenv("DEPLOYMENT_ENVIRONMENT", "")
+
+	got := map[attribute.Key]string{}
+	for _, kv := range resourceAttributes(Config{ServiceName: "order-worker"}) {
+		got[kv.Key] = kv.Value.AsString()
+	}
+	if got[semconv.ServiceVersionKey] != "build-7" {
+		t.Errorf("service.version = %q, want build-7 from OTEL_RESOURCE_ATTRIBUTES", got[semconv.ServiceVersionKey])
+	}
+	if len(got) != 2 {
+		t.Errorf("attribute set = %v, want service.name and service.version only", got)
 	}
 }

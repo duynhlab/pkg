@@ -14,8 +14,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/contrib/bridges/otelzap"
@@ -79,7 +81,9 @@ type Config struct {
 	// insecure option. Default: OTEL_COLLECTOR_ENDPOINT.
 	Endpoint string
 	// TracesEnabled builds a TracerProvider (OTLP http, ParentBased sampler)
-	// and installs it plus the W3C propagator globally.
+	// and installs it globally. The W3C propagator is installed regardless
+	// (RFC-0031 Task 1.2): trace context must cross every hop even when this
+	// process exports no spans, or the services behind it lose correlation.
 	TracesEnabled bool
 	// SampleRate is the ParentBased(TraceIDRatioBased) ratio. Values outside
 	// [0, 1] (including NaN) fall back to the 0.1 default. 0 is a VALID value
@@ -303,7 +307,9 @@ func withLogExporter(e sdklog.Exporter) SetupOption {
 // in main() and defer Shutdown. Signals are built independently per Config;
 // enabled providers are also installed as the OTel globals so contrib
 // instrumentation (otelgin, otelgrpc, Temporal SDK, log bridges) picks them
-// up without further wiring. opts are internal (test injection); external
+// up without further wiring. The W3C TraceContext+Baggage propagator is
+// installed unconditionally — the one global set even when every signal is
+// off — so trace context crosses this process whether or not it exports. opts are internal (test injection); external
 // callers pass none.
 func SetupObservability(ctx context.Context, cfg Config, opts ...SetupOption) (*Observability, error) {
 	if cfg.ServiceName == "" {
@@ -402,6 +408,15 @@ func SetupObservability(ctx context.Context, cfg Config, opts ...SetupOption) (*
 	// partial failure above therefore never leaves an already-shut-down
 	// provider installed as a global (which would silently drop every span
 	// for the process lifetime while the service keeps serving).
+	//
+	// The propagator is independent of TracesEnabled. A process that exports
+	// no spans still has to forward traceparent/baggage on every outbound
+	// call, otherwise a single service with TRACING_ENABLED=false breaks the
+	// trace for everything downstream of it (RFC-0031 goal: W3C correlation
+	// whether export is enabled or not).
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{}, propagation.Baggage{},
+	))
 	if obs.tracerProvider != nil || obs.factoryTracerProvider != nil {
 		var tp trace.TracerProvider
 		if obs.factoryTracerProvider != nil {
@@ -415,9 +430,6 @@ func SetupObservability(ctx context.Context, cfg Config, opts ...SetupOption) (*
 		}
 		otel.SetTracerProvider(tp)
 		obs.globalTracerProvider = tp
-		otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
-			propagation.TraceContext{}, propagation.Baggage{},
-		))
 	}
 	if obs.meterProvider != nil {
 		otel.SetMeterProvider(obs.meterProvider)
@@ -490,28 +502,81 @@ func (o *Observability) Shutdown(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// buildResource assembles the semconv v1.41 Resource: service identity from
-// Config, Kubernetes identity from the Downward API envs (K8S_NAMESPACE_NAME,
-// K8S_POD_NAME) and deployment.environment.name from DEPLOYMENT_ENVIRONMENT.
-// Partial failure (the classic semconv schema-URL conflict) is tolerated:
-// whatever resource.New assembled is used — never fail the service over
-// telemetry identity (RFC-0013 lesson from product-service).
-func buildResource(ctx context.Context, cfg Config) *resource.Resource {
-	attrs := []attribute.KeyValue{semconv.ServiceName(cfg.ServiceName)}
-	if cfg.ServiceVersion != "" {
-		attrs = append(attrs, semconv.ServiceVersion(cfg.ServiceVersion))
+// resourceAttributes is the ONE place the platform's resource identity is
+// derived from the environment (RFC-0031 Task 1.2). The tracer, meter and
+// logger provider read this list today; Task 1.4 switches the profiler's
+// labels to it as well, so that no signal can disagree about who a process is.
+//
+// Sources, lowest precedence first:
+//
+//  1. OTEL_RESOURCE_ATTRIBUTES — the standard comma-separated key=value list
+//     (the domain ResourceSets put service.namespace, service.instance.id and
+//     service.version there). Parsed like the SDK's env detector — keys and
+//     values trimmed, values percent-decoded (raw value kept when decoding
+//     fails), last occurrence of a key wins — with two deliberate differences:
+//     a pair with an empty key or an empty value is dropped rather than kept
+//     as an empty attribute, and a malformed entry is skipped rather than
+//     reported as a partial-resource error (identity never fails a service).
+//  2. The Downward-API variables the manifests set: K8S_NAMESPACE_NAME →
+//     k8s.namespace.name AND service.namespace, K8S_POD_NAME → k8s.pod.name,
+//     DEPLOYMENT_ENVIRONMENT → deployment.environment.name (the current
+//     semconv key — never the retired deployment.environment).
+//  3. Config: service.name always, service.version when set (SERVICE_VERSION).
+//
+// The contract deliberately produces nothing else: no container, node,
+// cluster or region attribute — those are collector-side enrichment, decided
+// separately (RFC-0031 Task 4.4). A key listed under (2) or (3) overrides the
+// same key from (1); TestResourceAttributes_Precedence pins that order.
+func resourceAttributes(cfg Config) []attribute.KeyValue {
+	merged := map[attribute.Key]string{}
+	var order []attribute.Key
+	set := func(k attribute.Key, v string) {
+		if v == "" {
+			return
+		}
+		if _, seen := merged[k]; !seen {
+			order = append(order, k)
+		}
+		merged[k] = v
 	}
+	for _, kv := range strings.Split(os.Getenv("OTEL_RESOURCE_ATTRIBUTES"), ",") {
+		k, v, ok := strings.Cut(strings.TrimSpace(kv), "=")
+		if !ok || strings.TrimSpace(k) == "" {
+			continue
+		}
+		raw := strings.TrimSpace(v)
+		val, err := url.PathUnescape(raw)
+		if err != nil {
+			val = raw
+		}
+		set(attribute.Key(strings.TrimSpace(k)), val)
+	}
+	// One variable, two keys: the namespace is both the Kubernetes identity
+	// and the semconv service.namespace the fleet groups on.
 	if v := os.Getenv("K8S_NAMESPACE_NAME"); v != "" {
-		attrs = append(attrs, semconv.K8SNamespaceName(v), semconv.ServiceNamespace(v))
+		set(semconv.K8SNamespaceNameKey, v)
+		set(semconv.ServiceNamespaceKey, v)
 	}
-	if v := os.Getenv("K8S_POD_NAME"); v != "" {
-		attrs = append(attrs, semconv.K8SPodName(v))
+	set(semconv.K8SPodNameKey, os.Getenv("K8S_POD_NAME"))
+	set(semconv.DeploymentEnvironmentNameKey, os.Getenv("DEPLOYMENT_ENVIRONMENT"))
+	set(semconv.ServiceNameKey, cfg.ServiceName)
+	set(semconv.ServiceVersionKey, cfg.ServiceVersion)
+
+	attrs := make([]attribute.KeyValue, 0, len(order))
+	for _, k := range order {
+		attrs = append(attrs, k.String(merged[k]))
 	}
-	if v := os.Getenv("DEPLOYMENT_ENVIRONMENT"); v != "" {
-		attrs = append(attrs, semconv.DeploymentEnvironmentNameKey.String(v))
-	}
+	return attrs
+}
+
+// buildResource assembles the semconv v1.41 Resource from resourceAttributes
+// plus the SDK's own telemetry.sdk.* identity. Partial failure (the classic
+// semconv schema-URL conflict) is tolerated: whatever resource.New assembled
+// is used — never fail the service over telemetry identity (RFC-0013 lesson
+// from product-service).
+func buildResource(ctx context.Context, cfg Config) *resource.Resource {
+	attrs := resourceAttributes(cfg)
 	res, err := resource.New(ctx,
-		resource.WithFromEnv(),
 		resource.WithTelemetrySDK(),
 		resource.WithAttributes(attrs...),
 	)
