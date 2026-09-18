@@ -590,57 +590,72 @@ func buildResource(ctx context.Context, cfg Config) *resource.Resource {
 	return res
 }
 
-// metricViews returns the platform's mandatory metric Views (RFC-0014):
-// SLO-preserving buckets for the semconv HTTP histograms and the
-// server.address/server.port cardinality guard on BOTH metric families that
-// carry them. On rpc.client they are per-pod IPs under headless DNS (full
-// series churn every rollout); on the http.server instruments otelgin derives
-// the port from the client-supplied Host header when the service name has no
-// port, so any caller can mint arbitrary label values (cardinality DoS).
-// semconv marks them opt-in for HTTP server metrics for exactly this reason.
+// metricViews returns the platform's mandatory metric View (RFC-0014,
+// RFC-0031 Task 1.3). It is ONE dispatcher rather than a list of NewView
+// matchers because the SDK creates a stream for EVERY matching View: a
+// wildcard "every seconds histogram" View beside the named ones would give
+// http.server.request.duration two streams under one name. Explicit
+// precedence — named instruments first, then the unit-based fallback —
+// keeps each instrument on exactly one stream.
+//
+// Named streams: SLO-preserving buckets for the semconv HTTP histograms and
+// the server.address/server.port cardinality guard on BOTH metric families
+// that carry them. On rpc.client they are per-pod IPs under headless DNS
+// (full series churn every rollout); on the http.server instruments otelgin
+// derives the port from the client-supplied Host header when the service
+// name has no port, so any caller can mint arbitrary label values
+// (cardinality DoS). semconv marks them opt-in for HTTP server metrics for
+// exactly this reason.
+//
+// Fallback: every OTHER histogram declared in seconds gets DurationBuckets.
+// The SDK's default boundaries are millisecond-shaped (0, 5, 10, … 10000),
+// so a seconds-unit business histogram that matched no View — the state of
+// order.inventory.commit_lag and payment.reconciliation.run.duration before
+// this — collapsed into its first bucket and every quantile read as ~0 while
+// the dashboard looked plausible. Declaring WithUnit("s") is now what a
+// service does; the View supplies the fleet boundaries (ADR-073). A
+// histogram that needs a different scale keeps its own unit (money in cents,
+// ratings) or is added above by name with a reviewed set.
 func metricViews() []sdkmetric.View {
+	return []sdkmetric.View{platformView}
+}
+
+// platformView is the dispatcher metricViews documents. It returns exactly
+// one Stream for an instrument the platform shapes, and false for everything
+// else so the SDK default applies.
+func platformView(i sdkmetric.Instrument) (sdkmetric.Stream, bool) {
 	denyServerAddr := attribute.NewDenyKeysFilter("server.address", "server.port")
-	return []sdkmetric.View{
-		sdkmetric.NewView(
-			sdkmetric.Instrument{Name: "http.server.request.duration"},
-			sdkmetric.Stream{
-				Aggregation:     sdkmetric.AggregationExplicitBucketHistogram{Boundaries: DurationBuckets},
-				AttributeFilter: denyServerAddr,
-			},
-		),
-		sdkmetric.NewView(
-			sdkmetric.Instrument{Name: "http.server.request.body.size"},
-			sdkmetric.Stream{
-				Aggregation:     sdkmetric.AggregationExplicitBucketHistogram{Boundaries: BodySizeBuckets},
-				AttributeFilter: denyServerAddr,
-			},
-		),
-		sdkmetric.NewView(
-			sdkmetric.Instrument{Name: "http.server.response.body.size"},
-			sdkmetric.Stream{
-				Aggregation:     sdkmetric.AggregationExplicitBucketHistogram{Boundaries: BodySizeBuckets},
-				AttributeFilter: denyServerAddr,
-			},
-		),
-		sdkmetric.NewView(
-			sdkmetric.Instrument{Name: "rpc.client.call.duration"},
-			sdkmetric.Stream{AttributeFilter: denyServerAddr},
-		),
-		// DB-scale buckets for the semconv DB-client histogram (see
-		// DBDurationBuckets). The View matches by instrument name, so it applies
-		// to ANY emitter of this semconv instrument — today that is only otelpgx
-		// (redisotel v9.21 emits db.client.connections.*, not this name), and the
-		// semconv-advised boundaries are the right treatment for the instrument
-		// regardless of emitter. No AttributeFilter: otelpgx records only the
-		// bounded pgx.operation.type + db.system.name pair (v0.11.1 source), and
-		// a View without a filter never widens an attribute set anyway.
-		sdkmetric.NewView(
-			sdkmetric.Instrument{Name: "db.client.operation.duration"},
-			sdkmetric.Stream{
-				Aggregation: sdkmetric.AggregationExplicitBucketHistogram{Boundaries: DBDurationBuckets},
-			},
-		),
+	durations := sdkmetric.AggregationExplicitBucketHistogram{Boundaries: DurationBuckets}
+	stream := func(agg sdkmetric.Aggregation, filter attribute.Filter) (sdkmetric.Stream, bool) {
+		return sdkmetric.Stream{
+			Name:            i.Name,
+			Description:     i.Description,
+			Unit:            i.Unit,
+			Aggregation:     agg,
+			AttributeFilter: filter,
+		}, true
 	}
+	switch i.Name {
+	case "http.server.request.duration":
+		return stream(durations, denyServerAddr)
+	case "http.server.request.body.size", "http.server.response.body.size":
+		return stream(sdkmetric.AggregationExplicitBucketHistogram{Boundaries: BodySizeBuckets}, denyServerAddr)
+	case "rpc.client.call.duration":
+		return stream(durations, denyServerAddr)
+	// DB-scale buckets for the semconv DB-client histogram (see
+	// DBDurationBuckets). Matched by name, so it applies to ANY emitter of
+	// this semconv instrument — today only otelpgx (redisotel v9.21 emits
+	// db.client.connections.*, not this name), and the semconv-advised
+	// boundaries are the right treatment regardless of emitter. No
+	// AttributeFilter: otelpgx records only the bounded pgx.operation.type +
+	// db.system.name pair, and a View never widens an attribute set anyway.
+	case "db.client.operation.duration":
+		return stream(sdkmetric.AggregationExplicitBucketHistogram{Boundaries: DBDurationBuckets}, nil)
+	}
+	if i.Kind == sdkmetric.InstrumentKindHistogram && i.Unit == "s" {
+		return stream(durations, nil)
+	}
+	return sdkmetric.Stream{}, false
 }
 
 func envBool(key string, def bool) bool {

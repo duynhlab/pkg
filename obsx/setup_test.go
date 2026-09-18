@@ -668,3 +668,80 @@ func TestResourceAttributes_EnvFillsWhatConfigLeavesEmpty(t *testing.T) {
 		t.Errorf("attribute set = %v, want service.name and service.version only", got)
 	}
 }
+
+func TestPlatformView_SecondsHistogramsGetFleetBuckets(t *testing.T) {
+	// RFC-0031 Task 1.3 / ADR-073: a seconds histogram that matches no named
+	// View used to fall back to the SDK's millisecond-shaped defaults and read
+	// ~0 at every quantile. Declaring WithUnit("s") is now enough; the View
+	// supplies DurationBuckets. Anything not in seconds keeps the SDK default,
+	// and no instrument may end up on two streams.
+	ctx := context.Background()
+	reader := sdkmetric.NewManualReader()
+	obs, err := SetupObservability(ctx, Config{ServiceName: "t", MetricsEnabled: true}, withMetricReader(reader))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = obs.Shutdown(ctx) })
+	meter := obs.MeterProvider().Meter("test")
+
+	lag, _ := meter.Float64Histogram("order.inventory.commit_lag", metric.WithUnit("s"))
+	rpcServer, _ := meter.Float64Histogram("rpc.server.call.duration", metric.WithUnit("s"))
+	cents, _ := meter.Int64Histogram("payment.amount", metric.WithUnit("{cent}"))
+	unitless, _ := meter.Float64Histogram("legacy.no_unit")
+	httpDur, _ := meter.Float64Histogram("http.server.request.duration", metric.WithUnit("s"))
+	counter, _ := meter.Int64Counter("order.saga.outcome.total")
+	lag.Record(ctx, 0.3)
+	rpcServer.Record(ctx, 0.02)
+	cents.Record(ctx, 1999)
+	unitless.Record(ctx, 0.3)
+	httpDur.Record(ctx, 0.1)
+	counter.Add(ctx, 1)
+
+	var rm metricdata.ResourceMetrics
+	if err := reader.Collect(ctx, &rm); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]int{}
+	bounds := map[string][]float64{}
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			seen[m.Name]++
+			if h, ok := m.Data.(metricdata.Histogram[float64]); ok && len(h.DataPoints) > 0 {
+				bounds[m.Name] = h.DataPoints[0].Bounds
+			}
+			if h, ok := m.Data.(metricdata.Histogram[int64]); ok && len(h.DataPoints) > 0 {
+				bounds[m.Name] = h.DataPoints[0].Bounds
+			}
+		}
+	}
+	for name, n := range seen {
+		if n != 1 {
+			t.Errorf("%s produced %d streams, want exactly 1 (a wildcard View beside the named ones would double it)", name, n)
+		}
+	}
+	for _, name := range []string{"order.inventory.commit_lag", "rpc.server.call.duration", "http.server.request.duration"} {
+		if got := bounds[name]; !equalFloats(got, DurationBuckets) {
+			t.Errorf("%s bounds = %v, want the fleet set %v", name, got, DurationBuckets)
+		}
+	}
+	for _, name := range []string{"payment.amount", "legacy.no_unit"} {
+		if got := bounds[name]; equalFloats(got, DurationBuckets) {
+			t.Errorf("%s is not a seconds histogram and must keep the SDK default, got the fleet set", name)
+		}
+		if len(bounds[name]) == 0 {
+			t.Errorf("%s produced no histogram data", name)
+		}
+	}
+}
+
+func equalFloats(a, b []float64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
