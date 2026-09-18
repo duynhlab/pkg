@@ -12,7 +12,7 @@ MODULES := $(shell find . -mindepth 2 -maxdepth 4 -type f -name 'go.mod' | cut -
 
 # golangci-lint is pinned and run via `go run` so no pre-installed binary is
 # needed (CI and laptops resolve the same version).
-GOLANGCI_LINT ?= go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.6.0
+GOLANGCI_LINT ?= go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 
 # Extra build tags for tests, e.g. `make test TAGS=integration` (dbx and
 # idempotency integration tests need a Docker daemon).
