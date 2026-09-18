@@ -446,10 +446,11 @@ func exportInterval(d time.Duration) time.Duration {
 // disabled. scopeName is the instrumentation scope, typically the service
 // name.
 //
-// Deprecated: ZapCore and TraceContext are the last Zap types on obsx's
-// exported surface. They stay until the RFC-0031 slogx facade (ADR-070) owns
-// the OTLP log bridge, then leave in the same obsx release; services should
-// not add new callers.
+// Retirement notice (not a Go deprecation — every service still tees through
+// this core, and staticcheck would fail their lint on the marker): ZapCore and
+// TraceContext are the last Zap types on obsx's exported surface. They stay
+// until the RFC-0031 slogx facade (ADR-070) owns the OTLP log bridge, then
+// leave in the same obsx release (Task 1.1c-B). Do not add new callers.
 //
 // min gates the bridge to the service's configured level. This is not
 // cosmetic: the raw otelzap core enables EVERY level (the SDK logger has no

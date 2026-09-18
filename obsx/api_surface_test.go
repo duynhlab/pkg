@@ -24,7 +24,8 @@ func TestExportedAPI_UsesOTelAPITypesOnly(t *testing.T) {
 		// obsx (temporalx.NewReplaySafeTracerProvider); callers forward it
 		// variadically and never import the SDK. Retire with the seam.
 		"TracerProviderConfig.SDKOptions": "sdktrace.",
-		// Deprecated: leave with the slogx facade (ADR-070, RFC-0031 Task 1.1c-B).
+		// Retired with the slogx facade (ADR-070, RFC-0031 Task 1.1c-B); not a Go
+		// deprecation, see the ZapCore doc.
 		"Observability.ZapCore": "zapcore.",
 		"TraceContext":          "zap.",
 	}
