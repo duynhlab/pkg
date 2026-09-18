@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/baggage"
 	"go.opentelemetry.io/otel/propagation"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -155,5 +156,73 @@ func TestTracing_JoinsInboundTraceparent(t *testing.T) {
 	}
 	if !spans[0].Parent().IsValid() {
 		t.Error("span has no parent — it started a new trace instead of joining the edge")
+	}
+}
+
+// RFC-0031 tracing contract: the platform default is NO application baggage.
+// The propagator obsx installs would forward any baggage member to every
+// downstream hop, including third-party providers, so the middleware itself
+// must never introduce one — an incoming request without baggage leaves the
+// handler with an empty baggage set and an outbound injection with no
+// `baggage` header.
+func TestTracing_SetsNoBaggage(t *testing.T) {
+	// otelgin captures the propagator when the middleware is built, so the
+	// composite one obsx installs in production must be in place BEFORE the
+	// router — the harness's TraceContext-only propagator would hide baggage.
+	prevProp := otel.GetTextMapPropagator()
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{}, propagation.Baggage{},
+	))
+	t.Cleanup(func() { otel.SetTextMapPropagator(prevProp) })
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(httpmw.Tracing("test-service"))
+	var members int
+	var outbound propagation.MapCarrier
+	r.GET("/orders/:id", func(c *gin.Context) {
+		members = baggage.FromContext(c.Request.Context()).Len()
+		outbound = propagation.MapCarrier{}
+		otel.GetTextMapPropagator().Inject(c.Request.Context(), outbound)
+		c.Status(http.StatusOK)
+	})
+
+	do(t, r, "/orders/1", map[string]string{"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"})
+
+	if members != 0 {
+		t.Errorf("baggage members in handler = %d, want 0 (default-deny)", members)
+	}
+	if _, ok := outbound["baggage"]; ok {
+		t.Errorf("outbound carrier has a baggage header %q; the middleware must add none", outbound["baggage"])
+	}
+	if outbound["traceparent"] == "" {
+		t.Error("traceparent must still be forwarded")
+	}
+
+	// And the composite propagator IS in the path: inbound baggage crosses the
+	// middleware unchanged — neither added to nor stripped — so the only way a
+	// key exists downstream is that a caller put it there deliberately.
+	do(t, r, "/orders/2", map[string]string{"baggage": "tenant=t1"})
+	if members != 1 {
+		t.Errorf("baggage members with an inbound header = %d, want 1 (forwarded, not stripped)", members)
+	}
+	if outbound["baggage"] != "tenant=t1" {
+		t.Errorf("outbound baggage = %q, want the inbound member forwarded unchanged", outbound["baggage"])
+	}
+}
+
+// The probe skip list is a contract, not a convenience: dashboards, the RED
+// metrics and the access log all assume exactly these routes vanish. Pin the
+// exact set so an addition is a reviewed change, not a drift.
+func TestDefaultSkipRoutes_Golden(t *testing.T) {
+	want := map[string]struct{}{
+		"/health": {}, "/healthz": {}, "/ready": {}, "/readyz": {}, "/livez": {}, "/metrics": {}, "/favicon.ico": {},
+	}
+	if len(httpmw.DefaultSkipRoutes) != len(want) {
+		t.Fatalf("DefaultSkipRoutes has %d entries, want %d: %v", len(httpmw.DefaultSkipRoutes), len(want), httpmw.DefaultSkipRoutes)
+	}
+	for route := range want {
+		if _, ok := httpmw.DefaultSkipRoutes[route]; !ok {
+			t.Errorf("%s missing from DefaultSkipRoutes", route)
+		}
 	}
 }
