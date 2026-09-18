@@ -29,7 +29,7 @@ func teeLogger(t *testing.T) (*zap.Logger, *captureExporter, *bytes.Buffer) {
 	exp := &captureExporter{}
 	lp := sdklog.NewLoggerProvider(sdklog.WithProcessor(sdklog.NewSimpleProcessor(exp)))
 	t.Cleanup(func() { _ = lp.Shutdown(context.Background()) })
-	obs := &Observability{LoggerProvider: lp}
+	obs := &Observability{loggerProvider: lp}
 
 	buf := &bytes.Buffer{}
 	stdout := zapcore.NewCore(

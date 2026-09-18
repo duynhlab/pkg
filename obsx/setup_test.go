@@ -93,8 +93,14 @@ func TestSetupObservability_DisabledByDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SetupObservability: %v", err)
 	}
-	if obs.TracerProvider != nil || obs.MeterProvider != nil || obs.LoggerProvider != nil {
-		t.Error("all providers must be nil when every signal is disabled")
+	if obs.Enabled() != (Signals{}) {
+		t.Errorf("Enabled() = %+v, want all false when every signal is disabled", obs.Enabled())
+	}
+	// The API accessors must return TRUE nils, not typed nils in interfaces —
+	// a main() that checks `obs.MeterProvider() != nil` must get the right
+	// answer.
+	if obs.TracerProvider() != nil || obs.MeterProvider() != nil || obs.LoggerProvider() != nil {
+		t.Error("accessors must return nil when every signal is disabled")
 	}
 	core := obs.ZapCore("t", zapcore.InfoLevel)
 	if core == nil {
@@ -105,6 +111,21 @@ func TestSetupObservability_DisabledByDefault(t *testing.T) {
 	}
 	if err := obs.Shutdown(context.Background()); err != nil {
 		t.Errorf("Shutdown of empty Observability: %v", err)
+	}
+}
+
+func TestObservability_NilReceiverIsSafe(t *testing.T) {
+	// main() keeps a nil *Observability when SetupObservability failed and
+	// still asks it questions; every accessor must answer "nothing".
+	var obs *Observability
+	if obs.Enabled() != (Signals{}) {
+		t.Errorf("Enabled() on nil = %+v, want zero", obs.Enabled())
+	}
+	if obs.TracerProvider() != nil || obs.MeterProvider() != nil || obs.LoggerProvider() != nil {
+		t.Error("accessors on a nil receiver must return nil")
+	}
+	if err := obs.Shutdown(context.Background()); err != nil {
+		t.Errorf("Shutdown on nil: %v", err)
 	}
 }
 
@@ -119,11 +140,14 @@ func TestSetupObservability_MetricsViews(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = obs.Shutdown(ctx) })
 
-	if otel.GetMeterProvider() != obs.MeterProvider {
+	if otel.GetMeterProvider() != obs.MeterProvider() {
 		t.Error("global MeterProvider must be installed (otelgrpc/Temporal ride on it)")
 	}
+	if !obs.Enabled().Metrics || obs.Enabled().Traces || obs.Enabled().Logs {
+		t.Errorf("Enabled() = %+v, want metrics only", obs.Enabled())
+	}
 
-	meter := obs.MeterProvider.Meter("test")
+	meter := obs.MeterProvider().Meter("test")
 
 	dur, err := meter.Float64Histogram("http.server.request.duration")
 	if err != nil {
@@ -251,7 +275,7 @@ func TestSetupObservability_BodySizeViews(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = obs.Shutdown(ctx) })
 
-	meter := obs.MeterProvider.Meter("test")
+	meter := obs.MeterProvider().Meter("test")
 	for _, name := range []string{"http.server.request.body.size", "http.server.response.body.size"} {
 		h, err := meter.Int64Histogram(name)
 		if err != nil {
@@ -300,11 +324,14 @@ func TestSetupObservability_TracesAndGlobals(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = obs.Shutdown(ctx) })
 
-	if obs.TracerProvider == nil {
-		t.Fatal("TracerProvider nil with TracesEnabled")
+	if obs.tracerProvider == nil {
+		t.Fatal("stock SDK provider nil with TracesEnabled")
 	}
-	if otel.GetTracerProvider() != obs.TracerProvider {
-		t.Error("global TracerProvider must be installed")
+	if otel.GetTracerProvider() != obs.TracerProvider() {
+		t.Error("TracerProvider() must be what was installed as the global")
+	}
+	if !obs.Enabled().Traces {
+		t.Error("Enabled().Traces must be true")
 	}
 	fields := otel.GetTextMapPropagator().Fields()
 	var hasTraceparent bool
@@ -317,9 +344,9 @@ func TestSetupObservability_TracesAndGlobals(t *testing.T) {
 		t.Errorf("W3C propagator must be installed, fields=%v", fields)
 	}
 
-	_, span := obs.TracerProvider.Tracer("t").Start(ctx, "op")
+	_, span := obs.TracerProvider().Tracer("t").Start(ctx, "op")
 	span.End()
-	if err := obs.TracerProvider.ForceFlush(ctx); err != nil {
+	if err := obs.tracerProvider.ForceFlush(ctx); err != nil {
 		t.Fatal(err)
 	}
 	spans := exp.GetSpans()
@@ -346,11 +373,14 @@ func TestSetupObservability_ProfilingWrapsGlobalTracer(t *testing.T) {
 	if global == nil {
 		t.Fatal("no global TracerProvider installed")
 	}
-	if global == any(obs.TracerProvider) {
+	if global == any(obs.tracerProvider) {
 		t.Error("ProfilingEnabled must install the profiling wrapper as the global, got the raw SDK provider")
 	}
-	if obs.TracerProvider == nil {
-		t.Error("Observability.TracerProvider must stay the raw SDK provider for Shutdown")
+	if obs.tracerProvider == nil {
+		t.Error("the raw SDK provider must be kept for Shutdown")
+	}
+	if obs.TracerProvider() != global {
+		t.Error("TracerProvider() must return the installed wrapper, not the raw provider")
 	}
 	// Spans must still flow through the wrapper.
 	_, span := global.Tracer("t").Start(ctx, "op")
@@ -421,8 +451,11 @@ func TestSetupObservability_RealExporterConstruction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SetupObservability with real exporters: %v", err)
 	}
-	if obs.TracerProvider == nil || obs.MeterProvider == nil || obs.LoggerProvider == nil {
-		t.Fatal("all providers must be built when all signals are enabled")
+	if obs.Enabled() != (Signals{Traces: true, Metrics: true, Logs: true}) {
+		t.Fatalf("Enabled() = %+v, want all true when all signals are enabled", obs.Enabled())
+	}
+	if obs.TracerProvider() == nil || obs.MeterProvider() == nil || obs.LoggerProvider() == nil {
+		t.Fatal("all accessors must be non-nil when all signals are enabled")
 	}
 
 	shCtx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
@@ -494,9 +527,9 @@ func TestSetupObservability_TracerProviderFactory(t *testing.T) {
 	obs, err := SetupObservability(ctx,
 		Config{ServiceName: "t", TracesEnabled: true, SampleRate: 1, ProfilingEnabled: true},
 		withSpanExporter(exp),
-		WithTracerProviderFactory(func(opts ...sdktrace.TracerProviderOption) ShutdownTracerProvider {
-			got = opts
-			return &fakeFactoryProvider{sdktrace.NewTracerProvider(opts...)}
+		WithTracerProviderFactory(func(c TracerProviderConfig) ShutdownTracerProvider {
+			got = c.SDKOptions()
+			return &fakeFactoryProvider{sdktrace.NewTracerProvider(c.SDKOptions()...)}
 		}))
 	if err != nil {
 		t.Fatal(err)
@@ -506,8 +539,8 @@ func TestSetupObservability_TracerProviderFactory(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("factory received %d options, want 3 (resource, sampler, batcher)", len(got))
 	}
-	if obs.TracerProvider != nil {
-		t.Error("TracerProvider must stay nil under a factory — its type is the stock provider")
+	if obs.tracerProvider != nil {
+		t.Error("the stock provider must not be built under a factory")
 	}
 	global := otel.GetTracerProvider()
 	if _, ok := global.(*fakeFactoryProvider); !ok {
@@ -516,8 +549,11 @@ func TestSetupObservability_TracerProviderFactory(t *testing.T) {
 		// type-asserts it).
 		t.Fatalf("global must be the factory's concrete type, got %T", global)
 	}
-	if obs.GlobalTracerProvider != global {
-		t.Error("GlobalTracerProvider must record what was installed")
+	if obs.TracerProvider() != global {
+		t.Error("TracerProvider() must return the factory's provider — what was installed")
+	}
+	if !obs.Enabled().Traces {
+		t.Error("Enabled().Traces must be true under a factory")
 	}
 
 	_, span := global.Tracer("t").Start(ctx, "op")
