@@ -33,12 +33,20 @@ const timestampLayout = "2006-01-02T15:04:05.000Z07:00"
 // source capture and the envelope renames all live in slog's own handler
 // options; only the trace correlation needs a wrapper (traceHandler), because
 // the ids come from the context and ReplaceAttr never sees the context.
-func newStdoutHandler(w io.Writer, level slog.Leveler, addSource bool) slog.Handler {
-	return traceHandler{level: level, next: slog.NewJSONHandler(w, &slog.HandlerOptions{
+func newStdoutHandler(w io.Writer, level slog.Leveler, addSource bool, r *redactor) slog.Handler {
+	// Order matters: redaction sits outermost so a record is redacted
+	// exactly once and identically for every sink; below it the level gate
+	// and the trace ids (traceHandler), which the redactor must not see —
+	// they are the platform's own attributes, added after the budget is
+	// spent so a record at the cap keeps its correlation; the sinks last.
+	// The gate still runs first: redactHandler.Enabled delegates to it and
+	// Logger consults Enabled before building a record.
+	sink := slog.NewJSONHandler(w, &slog.HandlerOptions{
 		Level:       level,
 		AddSource:   addSource,
 		ReplaceAttr: replaceEnvelope,
-	})}
+	})
+	return redactHandler{r: r, next: traceHandler{level: level, next: sink}}
 }
 
 // replaceEnvelope renames slog's built-in keys to the platform envelope and

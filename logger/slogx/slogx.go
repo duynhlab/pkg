@@ -49,6 +49,10 @@ type Config struct {
 	// os.Exit; a bootstrap test injects a recorder to assert the FATAL path
 	// without forking the process.
 	Exit func(int)
+	// Redact is the privacy boundary applied before every sink. The zero
+	// value means DefaultRedactPolicy — the ADR-071 deny list and bounds.
+	// Services widen it only by adding keys; there is no way to turn it off.
+	Redact RedactPolicy
 }
 
 // Logger is the facade. Construct it with New; the zero value is not usable.
@@ -73,7 +77,7 @@ func New(cfg Config) *Logger {
 	level := &slog.LevelVar{}
 	level.Set(parseLevel(cfg.Level))
 	return &Logger{
-		h:     newStdoutHandler(w, level, !cfg.NoSource),
+		h:     newStdoutHandler(w, level, !cfg.NoSource, compile(cfg.Redact)),
 		level: level,
 		exit:  exit,
 	}
