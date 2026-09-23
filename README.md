@@ -18,7 +18,8 @@ go get github.com/duynhlab/pkg/logger/zapx@v0.36.0  # tag: logger/zapx/v0.36.0
 ```
 
 Module tags continue the pre-split numbering (the last single-module tag was
-`v0.35.0`). Migrating a service from the single-module `pkg`? See
+`v0.35.0`); a module first published after the split starts its own history at
+`v0.1.0` (`httpmw`, `logger/slogx`). Migrating a service from the single-module `pkg`? See
 [docs/MIGRATION.md](docs/MIGRATION.md) — import paths don't change, only
 `go.mod` does. Moving a service's logging from `logger/zapx` to the facade?
 See [docs/MIGRATION-slogx.md](docs/MIGRATION-slogx.md).

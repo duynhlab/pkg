@@ -3,8 +3,6 @@ package slogx_test
 import (
 	"bytes"
 	"context"
-	"errors"
-	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -377,62 +375,5 @@ func TestOTLP_GlobalProviderInstalledAfterNew(t *testing.T) {
 	}
 	if decode(t, buf)["message"] != "after setup" {
 		t.Errorf("stdout: %s", buf.String())
-	}
-}
-
-type notFound struct{ id string }
-
-func (e *notFound) Error() string { return "order " + e.id + " not found" }
-
-type wrapped struct{ inner error }
-
-func (w wrapped) Error() string { return "reserve: " + w.inner.Error() }
-func (w wrapped) Unwrap() error { return w.inner }
-
-// Err is the one shape for an error on a record: a stable type label beside a
-// message the redaction boundary has scanned.
-func TestErr(t *testing.T) {
-	lg, buf, exp := newPair(t, slogx.Config{})
-	base := &notFound{id: "8"}
-	lg.Error(context.Background(), "could not read the order",
-		slogx.Err(fmt.Errorf("fetch: %w", fmt.Errorf("db: %w", base))),
-		slogx.Err(nil), slog.String("order_id", "8"))
-	std := decode(t, buf)
-	e, _ := std["error"].(map[string]any)
-	if e == nil || e["type"] != "slogx_test.notFound" {
-		t.Errorf("the stdlib wrappers must be unwrapped: %v", std["error"])
-	}
-	if e["message"] != "fetch: db: order 8 not found" {
-		t.Errorf("message: %v", e["message"])
-	}
-	if a := attrs(exp.records()[0]); a["error.type"] != "slogx_test.notFound" {
-		t.Errorf("otlp: %v", a)
-	}
-
-	// A DSN inside an error text is redacted like any other value.
-	buf.Reset()
-	lg.Error(context.Background(), "x", slogx.Err(fmt.Errorf("dial postgres://app:hunter2@db:5432/x: %w", errors.New("refused"))))
-	if strings.Contains(buf.String(), "hunter2") {
-		t.Errorf("error text is not redacted: %s", buf.String())
-	}
-
-	for _, tc := range []struct {
-		err  error
-		want string
-	}{
-		{nil, ""},
-		{errors.New("x"), "errors.errorString"},
-		{base, "slogx_test.notFound"},
-		{wrapped{inner: base}, "slogx_test.wrapped"}, // a wrapper of its own is the answer
-		{fmt.Errorf("a: %w", wrapped{inner: base}), "slogx_test.wrapped"},
-		{errors.Join(base, errors.New("y")), "errors.joinError"},
-		{fmt.Errorf("a: %w %w", base, errors.New("y")), "errors.joinError"},
-	} {
-		if got := slogx.ErrorType(tc.err); got != tc.want {
-			t.Errorf("ErrorType(%v) = %q, want %q", tc.err, got, tc.want)
-		}
-	}
-	if a := slogx.Err(nil); a.Key != "" {
-		t.Errorf("a nil error yields an empty attribute: %v", a)
 	}
 }

@@ -4,118 +4,93 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
+	"io/fs"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
+// allowedForeign maps an exported declaration to the one import path it may
+// name. Entries are deliberate and documented at their declaration; removing
+// one here is the intended way to retire the exception.
+var allowedForeign = map[string]string{
+	// The seam main() uses to hand the facade a provider instead of the OTel
+	// global: obsx owns the provider, and a service that lets obsx install
+	// the global never names this type. Retire it if the global ever becomes
+	// the only supported path.
+	"Config.LoggerProvider": "go.opentelemetry.io/otel/log",
+}
+
 // TestExportedAPI_UsesStdlibTypesOnly pins ADR-070's central promise at the
 // facade's own surface: a service imports this package and nothing else for
-// logging, so no exported signature or struct field may name a type from a
-// logging library, from the OTel SDK, or from the bridge this package happens
-// to be built on. The API a call site sees is log/slog and the standard
-// library — that is what makes the sink replaceable without touching ten
-// services.
+// logging, so no exported signature, field, variable or type may name a type
+// from ANY module outside the standard library — not a logging library, not
+// the OTel SDK, not the bridge this package happens to be built on. That is
+// what makes the sink replaceable without touching ten services.
 //
-// The one allowlisted entry is deliberate and documented at its declaration.
-// Removing an entry here is the intended way to retire the exception.
+// The check resolves each qualifier through the file's own imports rather
+// than matching package names, so an import alias, a type alias, an exported
+// variable or an embedded field cannot walk past it.
 func TestExportedAPI_UsesStdlibTypesOnly(t *testing.T) {
-	// Package qualifiers that must not appear in the exported surface.
-	forbidden := []string{
-		"zap.", "zapcore.", "zerolog.", "clog.", // logging libraries
-		"sdklog.", "sdktrace.", "sdkmetric.", "resource.", // the OTel SDK
-		"otelslog.", "global.", // the bridge and the OTel globals
-		"log.", // the OTel Logs API — see the allowlist
-	}
-	allow := map[string]string{
-		// The seam main() uses to hand the facade a provider instead of the
-		// OTel global: obsx owns the provider, and a service that lets obsx
-		// install the global never names this type. Retire it if the global
-		// ever becomes the only supported path.
-		"Config.LoggerProvider": "log.",
-	}
-
-	fset := token.NewFileSet()
-	files, err := filepath.Glob("*.go")
-	if err != nil {
-		t.Fatal(err)
-	}
 	var violations []string
-	check := func(name string, node ast.Node) {
-		var sb strings.Builder
-		ast.Inspect(node, func(n ast.Node) bool {
-			if sel, ok := n.(*ast.SelectorExpr); ok {
-				if id, ok := sel.X.(*ast.Ident); ok {
-					sb.WriteString(id.Name + "." + sel.Sel.Name + " ")
+	forEachSourceFile(t, func(path string, f *ast.File) {
+		imports := importsOf(f)
+		check := func(name string, node ast.Node) {
+			for _, qualifier := range qualifiersIn(node) {
+				pkg, ok := imports[qualifier]
+				if !ok || isStdlib(pkg) || allowedForeign[name] == pkg {
+					continue
 				}
+				violations = append(violations, name+" names "+pkg+" ("+path+")")
 			}
-			return true
-		})
-		// Leading space so a qualifier matches whole: "log." must not be
-		// found inside "slog.Attr", which is the type this API is built on.
-		sig := " " + sb.String()
-		for _, f := range forbidden {
-			if strings.Contains(sig, " "+f) && allow[name] != f {
-				violations = append(violations, name+" uses "+f)
-			}
-		}
-	}
-	for _, path := range files {
-		if strings.HasSuffix(path, "_test.go") {
-			continue
-		}
-		src, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		f, err := parser.ParseFile(fset, path, src, 0)
-		if err != nil {
-			t.Fatal(err)
 		}
 		for _, d := range f.Decls {
 			switch d := d.(type) {
 			case *ast.FuncDecl:
-				if !d.Name.IsExported() {
-					continue
+				if name, ok := exportedFuncName(d); ok {
+					check(name, d.Type)
 				}
-				name := d.Name.Name
-				if d.Recv != nil && len(d.Recv.List) == 1 {
-					recv := d.Recv.List[0].Type
-					if star, ok := recv.(*ast.StarExpr); ok {
-						recv = star.X
-					}
-					id, ok := recv.(*ast.Ident)
-					if !ok || !id.IsExported() {
-						continue
-					}
-					name = id.Name + "." + name
-				}
-				check(name, d.Type)
 			case *ast.GenDecl:
 				for _, spec := range d.Specs {
-					ts, ok := spec.(*ast.TypeSpec)
-					if !ok || !ts.Name.IsExported() {
-						continue
-					}
-					switch tt := ts.Type.(type) {
-					case *ast.StructType:
-						for _, fld := range tt.Fields.List {
-							for _, n := range fld.Names {
-								if n.IsExported() {
-									check(ts.Name.Name+"."+n.Name, fld.Type)
+					switch sp := spec.(type) {
+					case *ast.TypeSpec: // includes aliases: check the whole RHS
+						if !sp.Name.IsExported() {
+							continue
+						}
+						if st, ok := sp.Type.(*ast.StructType); ok {
+							for _, fld := range st.Fields.List {
+								if len(fld.Names) == 0 { // embedded
+									check(sp.Name.Name+".<embedded>", fld.Type)
+									continue
+								}
+								for _, n := range fld.Names {
+									if n.IsExported() {
+										check(sp.Name.Name+"."+n.Name, fld.Type)
+									}
 								}
 							}
+							continue
 						}
-					case *ast.FuncType, *ast.InterfaceType:
-						check(ts.Name.Name, tt)
+						check(sp.Name.Name, sp.Type)
+					case *ast.ValueSpec: // exported var and const
+						for i, n := range sp.Names {
+							if !n.IsExported() {
+								continue
+							}
+							if sp.Type != nil {
+								check(n.Name, sp.Type)
+							}
+							if i < len(sp.Values) {
+								check(n.Name, sp.Values[i])
+							}
+						}
 					}
 				}
 			}
 		}
-	}
+	})
 	if len(violations) > 0 {
-		t.Errorf("exported API must speak log/slog and the standard library only:\n\t%s",
+		t.Errorf("the exported API must name standard-library types only:\n\t%s",
 			strings.Join(violations, "\n\t"))
 	}
 }
@@ -129,20 +104,9 @@ func TestNoSDKImports(t *testing.T) {
 		"go.opentelemetry.io/otel/sdk",
 		"go.uber.org/zap",
 		"github.com/rs/zerolog",
+		"github.com/sirupsen/logrus",
 	}
-	files, err := filepath.Glob("*.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	fset := token.NewFileSet()
-	for _, path := range files {
-		if strings.HasSuffix(path, "_test.go") {
-			continue
-		}
-		f, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
-		if err != nil {
-			t.Fatal(err)
-		}
+	forEachSourceFile(t, func(path string, f *ast.File) {
 		for _, imp := range f.Imports {
 			p := strings.Trim(imp.Path.Value, `"`)
 			for _, b := range banned {
@@ -151,5 +115,79 @@ func TestNoSDKImports(t *testing.T) {
 				}
 			}
 		}
+	})
+}
+
+// forEachSourceFile walks the module's non-test Go files.
+func forEachSourceFile(t *testing.T, fn func(path string, f *ast.File)) {
+	t.Helper()
+	fset := token.NewFileSet()
+	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return err
+		}
+		f, perr := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+		if perr != nil {
+			return perr
+		}
+		fn(path, f)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
+}
+
+// importsOf maps the qualifier a file uses to the import path behind it,
+// honouring aliases.
+func importsOf(f *ast.File) map[string]string {
+	out := map[string]string{}
+	for _, imp := range f.Imports {
+		path := strings.Trim(imp.Path.Value, `"`)
+		name := path[strings.LastIndex(path, "/")+1:]
+		if imp.Name != nil {
+			name = imp.Name.Name
+		}
+		out[name] = path
+	}
+	return out
+}
+
+// qualifiersIn returns the package qualifiers a declaration mentions.
+func qualifiersIn(node ast.Node) []string {
+	var out []string
+	ast.Inspect(node, func(n ast.Node) bool {
+		if sel, ok := n.(*ast.SelectorExpr); ok {
+			if id, ok := sel.X.(*ast.Ident); ok {
+				out = append(out, id.Name)
+			}
+		}
+		return true
+	})
+	return out
+}
+
+// isStdlib reports an import path with no module domain in its first segment,
+// which is the standard library's shape ("log/slog", "context").
+func isStdlib(path string) bool {
+	first, _, _ := strings.Cut(path, "/")
+	return !strings.Contains(first, ".")
+}
+
+func exportedFuncName(d *ast.FuncDecl) (string, bool) {
+	if !d.Name.IsExported() {
+		return "", false
+	}
+	if d.Recv == nil || len(d.Recv.List) != 1 {
+		return d.Name.Name, true
+	}
+	recv := d.Recv.List[0].Type
+	if star, ok := recv.(*ast.StarExpr); ok {
+		recv = star.X
+	}
+	id, ok := recv.(*ast.Ident)
+	if !ok || !id.IsExported() {
+		return "", false
+	}
+	return id.Name + "." + d.Name.Name, true
 }
