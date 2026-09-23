@@ -84,10 +84,10 @@ const (
 	// operator does not read a nesting cut as "a secret was here".
 	redacted    = "[REDACTED]"
 	depthMarker = "[TRUNCATED: depth]"
-	// droppedKey counts leaf attributes dropped by MaxAttrs. It is reserved
-	// like the envelope keys: a user attribute with this key is dropped.
-	// On a logger opened with WithGroup it renders inside that group, as
-	// every attribute added at Handle time does.
+	// droppedKey counts leaf attributes dropped by MaxAttrs. It is one of the
+	// reserved keys (see reserved): a top-level user attribute with this key
+	// is dropped. On a logger opened with WithGroup it renders inside that
+	// group, as every attribute added at Handle time does.
 	droppedKey = "_slogx.dropped"
 	// truncatedMarker is appended to a value bound cut.
 	truncatedMarker = "…(truncated)"
@@ -737,7 +737,7 @@ func (r *redactor) attr(a slog.Attr, b *budget, depth int) (slog.Attr, bool) {
 		b.dropped++ // slog would print an empty key; we do not
 		return slog.Attr{}, false
 	}
-	if a.Key == droppedKey || r.scan(a.Key) != a.Key {
+	if (depth == 1 && reserved(a.Key)) || r.scan(a.Key) != a.Key {
 		b.dropped++
 		return slog.Attr{}, false
 	}
@@ -748,6 +748,24 @@ func (r *redactor) attr(a slog.Attr, b *budget, depth int) (slog.Attr, bool) {
 		return slog.String(bound(a.Key, maxKeyLen), redacted), true
 	}
 	return r.value(bound(a.Key, maxKeyLen), a.Value, b, depth)
+}
+
+// reserved reports a key the platform owns at the top level of a record.
+// A caller's attribute with one of these names would not override the
+// envelope — it would sit beside it as a duplicate JSON key that every
+// parser resolves last-wins, and on the OTLP sink (where timestamp, level,
+// message and the trace ids are record FIELDS, not attributes) it would not
+// even collide. One record would then say two different things in
+// VictoriaLogs and in ClickHouse. The attribute is dropped and counted
+// instead; a domain value that wants one of these names needs a different
+// one (upstream_trace_id, event_timestamp). Nested uses are untouched: a
+// trace_id inside a group is the caller's own field, not the envelope's.
+func reserved(key string) bool {
+	switch key {
+	case keyTimestamp, keyLevel, keyMessage, keyCaller, keyTraceID, keySpanID, droppedKey:
+		return true
+	}
+	return false
 }
 
 // value redacts a value under an already-accepted key.

@@ -1,14 +1,17 @@
 // Package slogx is the platform's application logging facade (RFC-0031,
-// ADR-070): one context-first API over the standard library's slog that renders
-// each record to stdout as the platform JSON envelope. The remaining halves of
-// the contract land in later changes of the same task: redaction before every
-// sink, the OTLP sink through the OpenTelemetry slog bridge, and Event for the
-// reviewed catalog of named records. Until they land no service is cut over.
+// ADR-070): one context-first API over the standard library's slog that
+// renders each record twice from one redacted copy — to stdout as the platform
+// JSON envelope and over OTLP through the OpenTelemetry slog bridge — and
+// offers Event for the reviewed catalog of named records. No service is cut
+// over until the docs and migration notes of the same task land.
 //
 // A service imports this package and nothing else for logging. It never
 // constructs providers or exporters: the OTel logger provider is installed by
-// pkg/obsx and read from the OTel global, so this module depends on the OTel
-// API only and can be used by every layer.
+// pkg/obsx and read from the OTel global, so no file here imports the OTel
+// SDK and the facade can be used by every layer. (The SDK does appear in
+// go.mod: the tests assert what leaves over OTLP with an in-memory exporter.
+// The rule is about imports, which the fleet lint policy checks, not about
+// the module graph.)
 //
 // The facade is deliberately narrow. Every emission takes a context so the
 // active span's ids reach the record without business code building them, and
@@ -28,6 +31,8 @@ import (
 	"runtime"
 	"sync"
 	"time"
+
+	"go.opentelemetry.io/otel/log"
 )
 
 // Config drives New. Zero values are production defaults: info level, stdout,
@@ -36,9 +41,6 @@ type Config struct {
 	// Level is the LOG_LEVEL contract value: debug|info|warn|error (trace is
 	// accepted for local investigation). Unknown values mean info.
 	Level string
-	// Service names the instrumentation scope of the OTLP records. Typically
-	// the service name; used once the OTLP handler is attached.
-	Service string
 	// Stdout receives the JSON envelope. nil means os.Stdout; tests inject a
 	// buffer.
 	Stdout io.Writer
@@ -53,7 +55,22 @@ type Config struct {
 	// value means DefaultRedactPolicy — the ADR-071 deny list and bounds.
 	// Services widen it only by adding keys; there is no way to turn it off.
 	Redact RedactPolicy
+	// LoggerProvider overrides the OTel global provider the OTLP sink reads.
+	// nil (production) means the global, which pkg/obsx installs; tests pass
+	// an in-memory provider to assert what leaves over OTLP.
+	LoggerProvider log.LoggerProvider
+	// Flush is called once, with a bounded context, after Fatal has written
+	// its record and before the process ends — wire it in main() to the
+	// logger provider's ForceFlush so the FATAL record leaves the process.
+	// Without it a FATAL reaches stdout only: the OTLP side is batched, and
+	// nothing else runs after Fatal.
+	Flush func(context.Context) error
 }
+
+// fatalFlushTimeout bounds the Flush hook. A crashing process must not hang
+// on an unreachable collector, and an exporter that has not delivered in
+// this long will not.
+const fatalFlushTimeout = 5 * time.Second
 
 // Logger is the facade. Construct it with New; the zero value is not usable.
 // It is safe for concurrent use; With returns children that share the level.
@@ -61,6 +78,7 @@ type Logger struct {
 	h     slog.Handler
 	level *slog.LevelVar
 	exit  func(int)
+	flush func(context.Context) error
 }
 
 // New builds a Logger from cfg. It never fails: a misconfigured level means
@@ -77,9 +95,10 @@ func New(cfg Config) *Logger {
 	level := &slog.LevelVar{}
 	level.Set(parseLevel(cfg.Level))
 	return &Logger{
-		h:     newStdoutHandler(w, level, !cfg.NoSource, compile(cfg.Redact)),
+		h:     newHandler(w, level, !cfg.NoSource, compile(cfg.Redact), cfg.LoggerProvider),
 		level: level,
 		exit:  exit,
+		flush: cfg.Flush,
 	}
 }
 
@@ -117,12 +136,21 @@ func (l *Logger) Error(ctx context.Context, msg string, attrs ...slog.Attr) {
 }
 
 // Fatal emits a FATAL record and ends the process with exit status 1. It is
-// for bootstrap failure only — after shutdown and flush have been attempted —
-// never for a handler, workflow, activity or business decision. Stdout is
-// unbuffered; the OTLP side is flushed by obsx.Shutdown, which the caller
-// runs before reaching here.
+// for bootstrap failure only, never for a handler, workflow, activity or
+// business decision. Stdout is unbuffered, so the line is always on the
+// console; the OTLP side is batched and nothing runs after this call, so the
+// record leaves the process only if Config.Flush is wired — call Fatal
+// BEFORE obsx.Shutdown, which would leave the provider unable to export.
 func (l *Logger) Fatal(ctx context.Context, msg string, attrs ...slog.Attr) {
 	l.log(ctx, LevelFatal, msg, attrs)
+	if l.flush != nil {
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), fatalFlushTimeout)
+		_ = l.flush(fctx)
+		cancel()
+	}
 	l.exit(1)
 }
 
@@ -138,7 +166,7 @@ func (l *Logger) With(attrs ...slog.Attr) *Logger {
 	if len(attrs) == 0 {
 		return l
 	}
-	return &Logger{h: l.h.WithAttrs(attrs), level: l.level, exit: l.exit}
+	return &Logger{h: l.h.WithAttrs(attrs), level: l.level, exit: l.exit, flush: l.flush}
 }
 
 // Slog exposes the facade as a *slog.Logger for SDK bridges that require one
