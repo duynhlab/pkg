@@ -70,7 +70,7 @@ obs, _ := obsx.SetupObservability(ctx, obsx.ConfigFromEnv())
 defer obs.Shutdown(ctx)
 
 // The logging facade: stdout JSON + OTLP, redacted before both.
-log := slogx.New(slogx.Config{Level: "info"})
+log := slogx.New(slogx.Config{Level: "info", Flush: obs.ForceFlush})
 slogx.SetDefault(log)
 
 // Postgres pool with query tracing + pool-stat metrics baked in.
