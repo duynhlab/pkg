@@ -1,8 +1,9 @@
 // SetupObservability (RFC-0014 P0) is the single wiring point for the
 // OpenTelemetry SDK. One call in main() builds the shared
 // Resource and the per-signal providers — traces (OTLP), metrics (OTLP,
-// semconv-shaped via Views) and logs (OTLP via the otelzap bridge) — and
-// returns one Shutdown for all of them.
+// semconv-shaped via Views) and logs (OTLP; the logger/slogx facade reads the
+// provider from the OTel global this installs) — and returns one Shutdown for
+// all of them.
 //
 // Since the RFC-0014 P3 cutover OTLP metrics are the only pipeline:
 // MetricsEnabled defaults to TRUE (OTEL_METRICS_ENABLED=false remains an
@@ -20,7 +21,6 @@ import (
 	"strings"
 	"time"
 
-	"go.opentelemetry.io/contrib/bridges/otelzap"
 	"go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -37,7 +37,6 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap/zapcore"
 )
 
 // Canonical histogram bucket sets (RFC-0014 D-7 exit criteria).
@@ -100,8 +99,8 @@ type Config struct {
 	// so dashboard granularity and burn-rate math don't change (D-7); the
 	// SDK's own 60s default would be a silent 4x regression.
 	MetricsInterval time.Duration
-	// LogsEnabled builds the OTLP LoggerProvider; bridge it into zap with
-	// Observability.ZapCore.
+	// LogsEnabled builds the OTLP LoggerProvider and installs it as the OTel
+	// global, where the logger/slogx facade finds it.
 	LogsEnabled bool
 	// ProfilingEnabled wraps the global TracerProvider with the Pyroscope
 	// span-profile linker (TracerProviderWithProfiles) so trace→profile
@@ -153,6 +152,10 @@ type Observability struct {
 	meterProvider  *sdkmetric.MeterProvider
 	loggerProvider *sdklog.LoggerProvider
 	res            *resource.Resource
+
+	// flushes export what each built provider has buffered, without stopping
+	// it — ForceFlush runs them for the FATAL path, where nothing runs after.
+	flushes []func(context.Context) error
 
 	// globalTracerProvider is whatever was installed with otel.SetTracerProvider
 	// — the stock provider (possibly profiling-wrapped), or the
@@ -351,10 +354,14 @@ func SetupObservability(ctx context.Context, cfg Config, opts ...SetupOption) (*
 			ftp := st.tracerFactory(TracerProviderConfig{opts: tpOpts})
 			obs.factoryTracerProvider = ftp
 			obs.shutdowns = append(obs.shutdowns, ftp.Shutdown)
+			if f, ok := ftp.(interface{ ForceFlush(context.Context) error }); ok {
+				obs.flushes = append(obs.flushes, f.ForceFlush)
+			}
 		} else {
 			tp := sdktrace.NewTracerProvider(tpOpts...)
 			obs.tracerProvider = tp
 			obs.shutdowns = append(obs.shutdowns, tp.Shutdown)
+			obs.flushes = append(obs.flushes, tp.ForceFlush)
 		}
 	}
 
@@ -381,6 +388,7 @@ func SetupObservability(ctx context.Context, cfg Config, opts ...SetupOption) (*
 		}
 		obs.meterProvider = mp
 		obs.shutdowns = append(obs.shutdowns, mp.Shutdown)
+		obs.flushes = append(obs.flushes, mp.ForceFlush)
 	}
 
 	if cfg.LogsEnabled {
@@ -402,6 +410,7 @@ func SetupObservability(ctx context.Context, cfg Config, opts ...SetupOption) (*
 		)
 		obs.loggerProvider = lp
 		obs.shutdowns = append(obs.shutdowns, lp.Shutdown)
+		obs.flushes = append(obs.flushes, lp.ForceFlush)
 	}
 
 	// Every enabled signal built — only now touch process-wide state. A
@@ -453,37 +462,30 @@ func exportInterval(d time.Duration) time.Duration {
 	return d
 }
 
-// ZapCore returns a zapcore.Core that bridges zap records into the OTLP log
-// pipeline (tee it next to the service's stdout core), or nil when logs are
-// disabled. scopeName is the instrumentation scope, typically the service
-// name.
+// ForceFlush exports what every provider built by SetupObservability has
+// buffered, without stopping them. It exists for the one record nothing runs
+// after: wire it into the facade as slogx.Config{Flush: obs.ForceFlush} and a
+// FATAL record leaves the process before it exits, instead of dying in the
+// batch processor.
 //
-// Retirement notice (not a Go deprecation — every service still tees through
-// this core, and staticcheck would fail their lint on the marker): ZapCore and
-// TraceContext are the last Zap types on obsx's exported surface. They stay
-// until the RFC-0031 slogx facade (ADR-070) owns the OTLP log bridge, then
-// leave in the same obsx release (Task 1.1c-B). Do not add new callers.
-//
-// min gates the bridge to the service's configured level. This is not
-// cosmetic: the raw otelzap core enables EVERY level (the SDK logger has no
-// level concept), and under zapcore.NewTee each core gates independently — an
-// ungated bridge would export Debug records over OTLP that never reach the
-// Info-level stdout core, and debug statements are exactly where payload and
-// token dumps hide.
-func (o *Observability) ZapCore(scopeName string, min zapcore.Level) zapcore.Core {
-	if o == nil || o.loggerProvider == nil {
-		// A no-op core (never nil) lets every caller tee unconditionally:
-		// zapcore.NewTee(stdoutCore, obs.ZapCore(name, lvl)).
-		return zapcore.NewNopCore()
+// Logs flush FIRST (reverse construction order, as Shutdown): the caller gives
+// the whole flush one deadline, and a slow collector — a plausible reason the
+// process is dying — must not spend it on spans and metrics before the FATAL
+// record's turn. A factory-built tracer provider is flushed only if it has a
+// ForceFlush(context.Context) error method. Call Fatal before Shutdown: after
+// it the providers export nothing, and the metric reader reports
+// ErrReaderShutdown. Safe on a nil or signal-less Observability.
+func (o *Observability) ForceFlush(ctx context.Context) error {
+	if o == nil {
+		return nil
 	}
-	core := otelzap.NewCore(scopeName, otelzap.WithLoggerProvider(o.loggerProvider))
-	leveled, err := zapcore.NewIncreaseLevelCore(core, min)
-	if err != nil {
-		// Unreachable with the all-levels otelzap core; keep the gated intent
-		// by falling back to the raw core only if wrapping ever fails.
-		return core
+	var errs []error
+	for i := len(o.flushes) - 1; i >= 0; i-- {
+		if err := o.flushes[i](ctx); err != nil {
+			errs = append(errs, err)
+		}
 	}
-	return leveled
+	return errors.Join(errs...)
 }
 
 // Shutdown flushes and stops every provider built by SetupObservability, in

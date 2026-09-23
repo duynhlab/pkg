@@ -10,7 +10,7 @@ does change shape — the error, see the table — and the rest is the call site
 
 | | Before | After |
 |---|---|---|
-| Construction | `zapx.New(os.Getenv("LOG_LEVEL"))` + `obsx.ZapCore` for the OTLP side | `slogx.New(slogx.Config{Level: os.Getenv("LOG_LEVEL")})` — both sinks |
+| Construction | `zapx.New(os.Getenv("LOG_LEVEL"))` + `obsx.ZapCore` for the OTLP side | `slogx.New(slogx.Config{Level: os.Getenv("LOG_LEVEL"), Flush: obs.ForceFlush})` — both sinks |
 | Call | `log.Info("msg", zap.String("k", v))` | `log.Info(ctx, "msg", slog.String("k", v))` |
 | Errors | `zap.Error(err)` → `"error": "<text>"` | `slogx.Err(err)` → `"error.type"` + `"error.message"` |
 | Trace correlation | `obsx.TraceContext(ctx)` passed as a field | automatic — the context is the first argument |
@@ -35,9 +35,17 @@ dashboards and rules in `homelab` before the first service cuts over.
 go get github.com/duynhlab/pkg/logger/slogx@v0.1.0
 ```
 
-`obsx` must be at the floor that installs the logger provider in the OTel
-global (v0.40.0 or later). Nothing else moves: `slogx` reads the provider from
-the global, so `main()` never hands it one.
+Move `obsx` to **v0.45.0** in the same change: it removes `ZapCore` and
+`TraceContext` (so the old bootstrap stops compiling, which is the point — a
+service cannot end up half-migrated) and adds `ForceFlush`. `slogx` reads the
+logger provider from the OTel global obsx installs, so `main()` never hands it
+one.
+
+The same change bumps the transport and worker adapters to their slog
+releases — `httpmw` v0.2.0, `grpcx` v0.37.0, `temporalx` v0.40.0 (see
+[Transport and worker adapters](#transport-and-worker-adapters)); the older
+tags need the zap bridge v0.45.0 removed. A service that has not migrated stays
+on obsx v0.44.x, which remains the patch line until the fleet has cut over.
 
 ## The bootstrap
 
@@ -52,18 +60,21 @@ logger = logger.WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
 }))
 
 // after
-log := slogx.New(slogx.Config{Level: os.Getenv("LOG_LEVEL")})
+log := slogx.New(slogx.Config{
+    Level: os.Getenv("LOG_LEVEL"),
+    Flush: obs.ForceFlush, // a FATAL record leaves the process before it exits
+})
 slogx.SetDefault(log)
 ```
 
 Ordering: call `Fatal` **before** `obs.Shutdown()`. Shutdown stops the
 provider, and a record emitted after it is dropped rather than exported.
 
-`Config.Flush` is the seam that lets a FATAL record leave the process: the
-OTLP side is batched and nothing runs after `Fatal`, so without it a FATAL
-reaches stdout only (Vector still ships it to VictoriaLogs; it will be absent
-from the 90-day store). `obsx` does not expose a log force-flush yet — wire
-the field when it does. Nothing else about Fatal changes.
+`Config.Flush` is what lets a FATAL record leave the process: the OTLP side is
+batched and nothing runs after `Fatal`, so without it a FATAL reaches stdout
+only (Vector still ships it to VictoriaLogs, but it is absent from the 90-day
+store). `obs.ForceFlush` exports every provider's buffer without stopping it,
+which is why it must run before `obs.Shutdown`, never after.
 
 ## Transport and worker adapters
 

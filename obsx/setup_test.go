@@ -2,6 +2,7 @@ package obsx
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -9,6 +10,8 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	otellog "go.opentelemetry.io/otel/log"
+	"go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
@@ -17,8 +20,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
+	tracenoop "go.opentelemetry.io/otel/trace/noop"
 )
 
 func TestConfigFromEnv_Defaults(t *testing.T) {
@@ -104,12 +106,12 @@ func TestSetupObservability_DisabledByDefault(t *testing.T) {
 	if obs.TracerProvider() != nil || obs.MeterProvider() != nil || obs.LoggerProvider() != nil {
 		t.Error("accessors must return nil when every signal is disabled")
 	}
-	core := obs.ZapCore("t", zapcore.InfoLevel)
-	if core == nil {
-		t.Fatal("ZapCore must return a usable no-op core when logs are disabled (unconditional tee)")
+	if err := obs.ForceFlush(context.Background()); err != nil {
+		t.Errorf("ForceFlush with no signals must be a no-op: %v", err)
 	}
-	if core.Enabled(zapcore.ErrorLevel) {
-		t.Error("disabled-logs core must be a no-op")
+	var nilObs *Observability
+	if err := nilObs.ForceFlush(context.Background()); err != nil {
+		t.Errorf("ForceFlush on a nil Observability must be a no-op: %v", err)
 	}
 	if err := obs.Shutdown(context.Background()); err != nil {
 		t.Errorf("Shutdown of empty Observability: %v", err)
@@ -420,19 +422,106 @@ func TestSetupObservability_LogsBridge(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	core := obs.ZapCore("t", zapcore.InfoLevel)
-	if core == nil {
-		t.Fatal("ZapCore must be non-nil when logs are enabled")
+	// The provider is installed as the OTel global, which is where the
+	// logger/slogx facade finds it — obsx no longer hands out a zap bridge.
+	if obs.LoggerProvider() == nil {
+		t.Fatal("LoggerProvider must be non-nil when logs are enabled")
 	}
-	logger := zap.New(zapcore.NewTee(zapcore.NewNopCore(), core))
-	logger.Debug("secret payload dump") // below min level — must NOT be exported
-	logger.Info("hello otlp", zap.String("k", "v"))
+	var rec otellog.Record
+	rec.SetBody(attribute.StringValue("hello otlp"))
+	global.GetLoggerProvider().Logger("t").Emit(ctx, rec)
 
+	// ForceFlush exports what the batch processor holds WITHOUT stopping the
+	// provider: this is the FATAL path, where nothing runs after the call.
+	if err := obs.ForceFlush(ctx); err != nil {
+		t.Fatalf("ForceFlush: %v", err)
+	}
+	if got := exp.count(); got != 1 {
+		t.Fatalf("after ForceFlush exported %d records, want 1", got)
+	}
+	global.GetLoggerProvider().Logger("t").Emit(ctx, rec)
 	if err := obs.Shutdown(ctx); err != nil {
 		t.Fatalf("Shutdown: %v", err)
 	}
-	if got := exp.count(); got != 1 {
-		t.Fatalf("exported %d records, want exactly 1 (Info passes, Debug is level-gated)", got)
+	if got := exp.count(); got != 2 {
+		t.Fatalf("the provider must still export after ForceFlush; got %d records, want 2", got)
+	}
+}
+
+// flushingTracerProvider is a factory-built tracer provider whose ForceFlush
+// records its turn and fails; plainTracerProvider has no ForceFlush at all.
+type flushingTracerProvider struct {
+	tracenoop.TracerProvider
+	order *[]string
+	err   error
+}
+
+func (p flushingTracerProvider) Shutdown(context.Context) error { return nil }
+func (p flushingTracerProvider) ForceFlush(context.Context) error {
+	*p.order = append(*p.order, "traces")
+	return p.err
+}
+
+type plainTracerProvider struct{ tracenoop.TracerProvider }
+
+func (plainTracerProvider) Shutdown(context.Context) error { return nil }
+
+// orderLogExporter records when the log provider's buffer is exported.
+type orderLogExporter struct {
+	capturingLogExporter
+	order *[]string
+}
+
+func (e *orderLogExporter) Export(ctx context.Context, recs []sdklog.Record) error {
+	*e.order = append(*e.order, "logs")
+	return e.capturingLogExporter.Export(ctx, recs)
+}
+
+// ForceFlush flushes logs before traces — the FATAL record must not wait
+// behind the span export for its share of the deadline — reaches a factory
+// tracer provider that implements it, reports its error, and still flushes
+// the rest.
+func TestObservability_ForceFlushLogsFirstAndJoinsErrors(t *testing.T) {
+	ctx := context.Background()
+	var order []string
+	boom := errors.New("collector refused")
+	obs, err := SetupObservability(ctx,
+		Config{ServiceName: "t", TracesEnabled: true, LogsEnabled: true},
+		WithTracerProviderFactory(func(TracerProviderConfig) ShutdownTracerProvider {
+			return flushingTracerProvider{order: &order, err: boom}
+		}),
+		withLogExporter(&orderLogExporter{order: &order}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = obs.Shutdown(ctx) })
+
+	var rec otellog.Record
+	rec.SetBody(attribute.StringValue("fatal"))
+	global.GetLoggerProvider().Logger("t").Emit(ctx, rec)
+
+	if err := obs.ForceFlush(ctx); !errors.Is(err, boom) {
+		t.Errorf("ForceFlush must report the tracer provider's error: %v", err)
+	}
+	if len(order) != 2 || order[0] != "logs" || order[1] != "traces" {
+		t.Errorf("flush order = %v, want [logs traces]", order)
+	}
+}
+
+// A factory-built tracer provider without ForceFlush is skipped, not an error.
+func TestObservability_ForceFlushSkipsFactoryWithoutIt(t *testing.T) {
+	ctx := context.Background()
+	obs, err := SetupObservability(ctx,
+		Config{ServiceName: "t", TracesEnabled: true},
+		WithTracerProviderFactory(func(TracerProviderConfig) ShutdownTracerProvider {
+			return plainTracerProvider{}
+		}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = obs.Shutdown(ctx) })
+	if err := obs.ForceFlush(ctx); err != nil {
+		t.Errorf("ForceFlush = %v, want nil", err)
 	}
 }
 
