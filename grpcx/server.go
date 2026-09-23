@@ -9,7 +9,6 @@ package grpcx
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
 	"runtime/debug"
@@ -25,11 +24,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// maxPanicStack bounds the stack a recovered panic writes. A panic is the one
-// record where a stack is worth its bytes, but a deep one runs to tens of
-// kilobytes, and the record may be exported to a store kept for months.
-const maxPanicStack = 4096
-
 // recovery returns the interceptor pair that turns a panicking handler into a
 // codes.Internal error instead of letting the panic crash the process. The gRPC
 // server shares its process with the HTTP server, so an unrecovered handler
@@ -39,22 +33,21 @@ const maxPanicStack = 4096
 // The panic is written through the service logger as one structured record —
 // never to stderr as free text, which would bypass the redaction the facade
 // applies and break the one-JSON-record-per-line contract. A nil logger (access
-// log disabled) still reports it, through slog.Default: a panic is never
+// log disabled) still reports it, through slog.Default resolved at the moment
+// of the panic, so a later slog.SetDefault is honoured: a panic is never
 // swallowed.
 func recovery(logger *slog.Logger) (grpc.UnaryServerInterceptor, grpc.StreamServerInterceptor) {
-	if logger == nil {
-		logger = slog.Default()
-	}
 	report := func(ctx context.Context, fullMethod string, r any) error {
-		stack := debug.Stack()
-		if len(stack) > maxPanicStack {
-			stack = stack[:maxPanicStack]
+		l := logger
+		if l == nil {
+			l = slog.Default()
 		}
-		logger.LogAttrs(ctx, slog.LevelError, "gRPC handler panicked",
-			slog.String("rpc.method", trimSlash(fullMethod)),
+		l.LogAttrs(ctx, slog.LevelError, "gRPC handler panicked",
+			slog.String("rpc.system.name", "grpc"),
+			slog.String("rpc.method", rpcMethod(fullMethod)),
 			slog.String("error.type", "panic"),
-			slog.String("exception.message", fmt.Sprint(r)),
-			slog.String("exception.stacktrace", string(stack)),
+			slog.String("exception.message", panicMessage(r)),
+			slog.String("exception.stacktrace", bound(string(debug.Stack()), maxPanicStack)),
 		)
 		return status.Error(codes.Internal, "internal error")
 	}
@@ -75,13 +68,6 @@ func recovery(logger *slog.Logger) (grpc.UnaryServerInterceptor, grpc.StreamServ
 		return handler(srv, ss)
 	}
 	return unary, stream
-}
-
-func trimSlash(fullMethod string) string {
-	if len(fullMethod) > 0 && fullMethod[0] == '/' {
-		return fullMethod[1:]
-	}
-	return fullMethod
 }
 
 // NewServer returns a *grpc.Server preconfigured for internal services:

@@ -3,6 +3,7 @@ package grpcx
 import (
 	"context"
 	"log/slog"
+	"strconv"
 	"strings"
 
 	"google.golang.org/grpc"
@@ -91,7 +92,9 @@ func canonicalCode(c codes.Code) string {
 	case codes.Unauthenticated:
 		return "UNAUTHENTICATED"
 	}
-	return "UNKNOWN"
+	// A code outside the spec reaches a server only from a peer that minted
+	// it; name it by number rather than fold it into UNKNOWN, a code it is not.
+	return "CODE(" + strconv.FormatUint(uint64(c), 10) + ")"
 }
 
 // serverError reports the codes the pinned otelgrpc marks the server span Error
@@ -154,15 +157,36 @@ func accessLogStream(logger *slog.Logger) grpc.StreamServerInterceptor {
 // histogram measure it exactly), and no trace id field: the record is written
 // with the call's context, so a context-aware handler stamps the ids itself.
 func logRPC(ctx context.Context, logger *slog.Logger, fullMethod string, err error) {
-	code := status.Code(err)
+	code := statusCode(err)
 	attrs := make([]slog.Attr, 0, 4)
 	attrs = append(attrs,
 		slog.String("rpc.system.name", "grpc"),
-		slog.String("rpc.method", strings.TrimPrefix(fullMethod, "/")),
+		slog.String("rpc.method", rpcMethod(fullMethod)),
 		slog.String("rpc.response.status_code", canonicalCode(code)),
 	)
 	if serverError(code) {
 		attrs = append(attrs, slog.String("error.type", canonicalCode(code)))
 	}
 	logger.LogAttrs(ctx, codeLevel(code), "gRPC request", attrs...)
+}
+
+// statusCode is the code the client sees for err. A handler that returns a bare
+// context error — ctx.Err() from a cancelled or expired call — reaches the wire
+// as CANCELLED or DEADLINE_EXCEEDED, not UNKNOWN; status.Code alone would log
+// the latter and disagree with the span.
+func statusCode(err error) codes.Code {
+	if s, ok := status.FromError(err); ok {
+		return s.Code()
+	}
+	return status.FromContextError(err).Code()
+}
+
+// maxRPCMethod bounds rpc.method. The server only routes registered methods,
+// but an unknown-service handler would see whatever path a peer sent.
+const maxRPCMethod = 256
+
+// rpcMethod is the full method as the span carries it: "package.Service/Method",
+// without the leading slash, bounded.
+func rpcMethod(fullMethod string) string {
+	return bound(strings.TrimPrefix(fullMethod, "/"), maxRPCMethod)
 }

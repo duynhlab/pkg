@@ -5,8 +5,10 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
+	"go.opentelemetry.io/otel/trace"
 	"go.temporal.io/sdk/client"
 	sdklog "go.temporal.io/sdk/log"
 	"go.temporal.io/sdk/testsuite"
@@ -19,12 +21,14 @@ type capture struct {
 	mu   sync.Mutex
 	msgs []string
 	recs []slog.Record
+	ctxs []context.Context
 }
 
 func (h *capture) Enabled(context.Context, slog.Level) bool { return true }
-func (h *capture) Handle(_ context.Context, r slog.Record) error {
+func (h *capture) Handle(ctx context.Context, r slog.Record) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	h.ctxs = append(h.ctxs, ctx)
 	h.msgs = append(h.msgs, r.Message)
 	h.recs = append(h.recs, r.Clone())
 	return nil
@@ -58,7 +62,13 @@ const workflowLine = "workflow decided"
 
 // logOnceWorkflow logs once through the SDK's replay-aware logger and returns;
 // testdata/history_log_once.json is its recorded history.
+// logOnceRuns counts executions of its code, so the replay half can prove the
+// code actually ran — a replay that never reached the log call would pass the
+// zero-records assertion vacuously.
+var logOnceRuns atomic.Int32
+
 func logOnceWorkflow(ctx workflow.Context) error {
+	logOnceRuns.Add(1)
 	workflow.GetLogger(ctx).Info(workflowLine, "order_id", "8")
 	return nil
 }
@@ -102,13 +112,49 @@ func TestWithLogger_WorkflowLogIsReplaySafe(t *testing.T) {
 	}
 
 	replayed := &capture{}
+	before := logOnceRuns.Load()
 	replayer := worker.NewWorkflowReplayer()
 	replayer.RegisterWorkflow(logOnceWorkflow)
 	if err := replayer.ReplayWorkflowHistoryFromJSONFile(sdkLogger(t, replayed), "testdata/history_log_once.json"); err != nil {
 		t.Fatalf("replay: %v", err)
 	}
+	if logOnceRuns.Load() == before {
+		t.Fatal("replay never executed the workflow code; the zero-record check below would be vacuous")
+	}
 	if n := replayed.count(workflowLine); n != 0 {
 		t.Errorf("replay must write nothing from workflow code, got %d records", n)
+	}
+}
+
+// The tracing interceptor's TraceID/SpanID attributes become the record's span
+// context, so the platform handler stamps the canonical trace_id/span_id; they
+// are not written as a second, differently spelled pair. Other attributes pass.
+func TestWithLogger_LiftsTracingAttrsIntoContext(t *testing.T) {
+	h := &capture{}
+	tid := trace.TraceID{0x4b, 0xf9, 1}
+	sid := trace.SpanID{0x00, 0xf0, 2}
+	l := sdklog.With(sdkLogger(t, h), "TraceID", tid, "SpanID", sid, "WorkflowType", "checkout")
+	l.Info("activity started")
+
+	sc := trace.SpanContextFromContext(h.ctxs[0])
+	if sc.TraceID() != tid || sc.SpanID() != sid {
+		t.Errorf("span context = %s/%s, want %s/%s", sc.TraceID(), sc.SpanID(), tid, sid)
+	}
+	// capture drops With attributes, so check what reaches a real handler.
+	var buf strings.Builder
+	var o client.Options
+	WithLogger(slog.New(slog.NewJSONHandler(&buf, nil)))(&o)
+	sdklog.With(o.Logger, "TraceID", tid, "SpanID", sid, "WorkflowType", "checkout").Info("x")
+	if out := buf.String(); strings.Contains(out, "TraceID") || strings.Contains(out, "SpanID") ||
+		!strings.Contains(out, `"WorkflowType":"checkout"`) {
+		t.Errorf("attributes reaching the handler: %s", out)
+	}
+
+	// Without the pair, the record keeps a spanless context.
+	h2 := &capture{}
+	sdkLogger(t, h2).Info("plain")
+	if trace.SpanContextFromContext(h2.ctxs[0]).IsValid() {
+		t.Error("a record without tracing attributes must carry no span")
 	}
 }
 

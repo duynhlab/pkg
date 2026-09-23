@@ -59,24 +59,26 @@ import (
 
 	"github.com/duynhlab/pkg/dbx"
 	"github.com/duynhlab/pkg/grpcx"
-	"github.com/duynhlab/pkg/logger/zapx"
+	"github.com/duynhlab/pkg/logger/slogx"
 	"github.com/duynhlab/pkg/obsx"
 )
 
 ctx := context.Background()
 
-log, _ := zapx.New("info")
-
 // One-call OTel SDK wiring — traces + metrics + logs over OTLP.
 obs, _ := obsx.SetupObservability(ctx, obsx.ConfigFromEnv())
 defer obs.Shutdown(ctx)
+
+// The logging facade: stdout JSON + OTLP, redacted before both.
+log := slogx.New(slogx.Config{Level: "info"})
+slogx.SetDefault(log)
 
 // Postgres pool with query tracing + pool-stat metrics baked in.
 pool, _ := dbx.NewPool(ctx, "postgres://user:pass@localhost/db")
 defer pool.Close()
 
 // gRPC server (otel + health + reflection + access logs) and client.
-srv, health := grpcx.NewServer(log)
+srv, health := grpcx.NewServer(log.Slog())
 conn, _ := grpcx.Dial("dns:///shipping.shipping.svc.cluster.local:9090")
 _, _, _ = srv, health, conn
 ```

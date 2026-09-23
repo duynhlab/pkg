@@ -232,62 +232,131 @@ func TestLogging_HeaderAlwaysSetButGeneratedIDNeverLogged(t *testing.T) {
 func TestTraceID_FallbackOrder(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	const want = "4bf92f3577b34da6a3ce929d0e0e4736"
+	const other = "0af7651916cd43dd8448eb211c80319c"
 
-	t.Run("traceparent", func(t *testing.T) {
-		c, _ := gin.CreateTestContext(httptest.NewRecorder())
-		c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
-		c.Request.Header.Set(httpmw.TraceParentHeader, "00-"+want+"-00f067aa0ba902b7-01")
-		if got := httpmw.TraceID(c); got != want {
-			t.Errorf("TraceID = %q, want the traceparent trace id", got)
-		}
-	})
-	t.Run("x-trace-id", func(t *testing.T) {
-		c, _ := gin.CreateTestContext(httptest.NewRecorder())
-		c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
-		c.Request.Header.Set(httpmw.TraceIDHeader, "from-header")
-		if got := httpmw.TraceID(c); got != "from-header" {
-			t.Errorf("TraceID = %q, want the X-Trace-ID value", got)
-		}
-	})
-	t.Run("generated when nothing is present", func(t *testing.T) {
-		c, _ := gin.CreateTestContext(httptest.NewRecorder())
-		c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
-		if got := httpmw.TraceID(c); len(got) != 32 {
-			t.Errorf("TraceID = %q, want a generated 32-hex id", got)
-		}
-	})
-	t.Run("malformed traceparent falls through", func(t *testing.T) {
-		c, _ := gin.CreateTestContext(httptest.NewRecorder())
-		c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
-		c.Request.Header.Set(httpmw.TraceParentHeader, "garbage")
-		c.Request.Header.Set(httpmw.TraceIDHeader, "from-header")
-		if got := httpmw.TraceID(c); got != "from-header" {
-			t.Errorf("TraceID = %q, want the fallback when traceparent is malformed", got)
-		}
-	})
+	cases := []struct {
+		name        string
+		traceparent string
+		xTraceID    string
+		want        string // empty: a freshly generated id
+	}{
+		{name: "traceparent", traceparent: "00-" + want + "-00f067aa0ba902b7-01", xTraceID: other, want: want},
+		{name: "x-trace-id", xTraceID: other, want: other},
+		{name: "malformed traceparent falls through", traceparent: "garbage", xTraceID: other, want: other},
+		{name: "all-zero traceparent falls through", traceparent: "00-00000000000000000000000000000000-00f067aa0ba902b7-01", xTraceID: other, want: other},
+		{name: "arbitrary X-Trace-ID is not echoed", xTraceID: "<script>alert(1)</script>"},
+		{name: "uppercase X-Trace-ID is not echoed", xTraceID: "4BF92F3577B34DA6A3CE929D0E0E4736"},
+		{name: "generated when nothing is present"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+			if tc.traceparent != "" {
+				c.Request.Header.Set(httpmw.TraceParentHeader, tc.traceparent)
+			}
+			if tc.xTraceID != "" {
+				c.Request.Header.Set(httpmw.TraceIDHeader, tc.xTraceID)
+			}
+			got := httpmw.TraceID(c)
+			if tc.want != "" {
+				if got != tc.want {
+					t.Errorf("TraceID = %q, want %q", got, tc.want)
+				}
+				return
+			}
+			if got == tc.xTraceID || !isHex32(got) {
+				t.Errorf("TraceID = %q, want a generated 32-hex id", got)
+			}
+		})
+	}
 }
 
-// LoggerFrom returns the logger Logging was given, and a silent one when
-// Logging was never mounted — a second, uncorrelated logger would hide that
-// mistake; silence surfaces it.
-func TestLoggerFrom(t *testing.T) {
+func isHex32(s string) bool {
+	if len(s) != 32 {
+		return false
+	}
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// A method outside the standard nine is a value the client chose; it is logged
+// as "_OTHER", the value the span carries, never verbatim.
+func TestLogging_NonStandardMethodIsOther(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	h := &capture{}
-	given := slog.New(h)
 	r := gin.New()
-	r.Use(httpmw.Logging(given))
-	var got *slog.Logger
-	r.GET("/x", func(c *gin.Context) { got = httpmw.LoggerFrom(c); c.Status(http.StatusOK) })
+	r.Use(httpmw.Logging(slog.New(h)))
+	r.Handle("PROPFIND", "/x", func(c *gin.Context) { c.Status(http.StatusOK) })
+	r.GET("/x", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	for method, want := range map[string]string{"PROPFIND": "_OTHER", http.MethodGet: http.MethodGet} {
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(method, "/x", nil))
+		_, a, _ := h.last(t)
+		if got := a["http.request.method"].String(); got != want {
+			t.Errorf("%s: http.request.method = %q, want %q", method, got, want)
+		}
+	}
+}
+
+// LoggerFrom writes through the logger Logging was given, bound to the request:
+// a call with no context of its own still carries the request span, and a call
+// that passes a span of its own keeps that one. Without Logging it is silent —
+// a second, uncorrelated logger would hide that mistake; silence surfaces it.
+func TestLoggerFrom(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tp := sdktrace.NewTracerProvider()
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+	tracer := tp.Tracer("test")
+
+	h := &capture{}
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		ctx, span := tracer.Start(c.Request.Context(), "req")
+		defer span.End()
+		c.Request = c.Request.WithContext(ctx)
+		c.Next()
+	})
+	r.Use(httpmw.Logging(slog.New(h)))
+	var reqSpan, childSpan oteltrace.SpanContext
+	var ctxs []context.Context
+	r.GET("/x", func(c *gin.Context) {
+		reqSpan = oteltrace.SpanContextFromContext(c.Request.Context())
+		l := httpmw.LoggerFrom(c).With("k", "v")
+		l.Info("no context")
+		ctxs = append(ctxs, h.ctxs[len(h.ctxs)-1])
+
+		child, span := tracer.Start(c.Request.Context(), "child")
+		childSpan = span.SpanContext()
+		l.InfoContext(child, "own span")
+		span.End()
+		ctxs = append(ctxs, h.ctxs[len(h.ctxs)-1])
+
+		l.InfoContext(context.Background(), "spanless context")
+		ctxs = append(ctxs, h.ctxs[len(h.ctxs)-1])
+		c.Status(http.StatusOK)
+	})
 	get(t, r, "/x")
-	if got != given {
-		t.Error("LoggerFrom must return the logger Logging was given")
+
+	for i, want := range []oteltrace.SpanContext{reqSpan, childSpan, reqSpan} {
+		if got := oteltrace.SpanContextFromContext(ctxs[i]); got.SpanID() != want.SpanID() {
+			t.Errorf("record %d: span = %s, want %s", i, got.SpanID(), want.SpanID())
+		}
+	}
+	if childSpan.SpanID() == reqSpan.SpanID() {
+		t.Fatal("test setup: the child span must differ from the request span")
 	}
 
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
 	silent := httpmw.LoggerFrom(c)
-	if silent == nil || silent == given {
-		t.Fatal("without Logging, LoggerFrom must return a silent logger of its own")
+	if silent == nil {
+		t.Fatal("without Logging, LoggerFrom must return a silent logger")
 	}
 	before := h.len()
 	silent.Error("must go nowhere")

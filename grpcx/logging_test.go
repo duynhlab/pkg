@@ -2,12 +2,15 @@ package grpcx
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
@@ -179,8 +182,27 @@ func TestCodeLevel_UnknownCodeIsError(t *testing.T) {
 	if got := codeLevel(codes.Code(99)); got != slog.LevelError {
 		t.Errorf("unknown code level = %v, want Error", got)
 	}
-	if got := canonicalCode(codes.Code(99)); got != "UNKNOWN" {
-		t.Errorf("unknown code canonical = %q, want UNKNOWN", got)
+	if got := canonicalCode(codes.Code(99)); got != "CODE(99)" {
+		t.Errorf("unknown code canonical = %q, want CODE(99)", got)
+	}
+}
+
+// A handler that returns a bare context error reaches the client as CANCELLED
+// or DEADLINE_EXCEEDED; the record must say the same, not UNKNOWN.
+func TestAccessLogUnary_ContextErrorsMapToTheirCodes(t *testing.T) {
+	for err, want := range map[error]string{
+		context.Canceled:                            "CANCELLED",
+		context.DeadlineExceeded:                    "DEADLINE_EXCEEDED",
+		fmt.Errorf("wrapped: %w", context.Canceled): "CANCELLED",
+		errors.New("plain"):                         "UNKNOWN",
+	} {
+		logger, h := newLogger()
+		info := &grpc.UnaryServerInfo{FullMethod: "/x.v1.S/M"}
+		_, _ = accessLogUnary(logger)(context.Background(), nil, info,
+			func(context.Context, any) (any, error) { return nil, err })
+		if got := attrsOf(h.byMessage("gRPC request")[0])["rpc.response.status_code"]; got != want {
+			t.Errorf("%v: status = %q, want %q", err, got, want)
+		}
 	}
 }
 
@@ -336,10 +358,11 @@ func TestNewServer_RecoveredPanicIsStructuredAndLoggedAsInternal(t *testing.T) {
 		t.Fatalf("want 1 panic record, got %d", len(panics))
 	}
 	a := attrsOf(panics[0])
-	if a["rpc.method"] != "grpcx.test.Panic/Boom" || a["error.type"] != "panic" || !strings.Contains(a["exception.message"], "boom") {
+	if a["rpc.system.name"] != "grpc" || a["rpc.method"] != "grpcx.test.Panic/Boom" ||
+		a["error.type"] != "panic" || a["exception.message"] != "!PANIC (string): boom: token=hunter2" {
 		t.Errorf("panic record: %v", a)
 	}
-	if st := a["exception.stacktrace"]; st == "" || len(st) > maxPanicStack {
+	if st := a["exception.stacktrace"]; st == "" || len(st) > maxPanicStack+len(truncatedMarker) {
 		t.Errorf("stacktrace must be present and bounded to %d bytes, got %d", maxPanicStack, len(st))
 	}
 }
@@ -361,10 +384,46 @@ func TestNewServer_NilLoggerStillReportsPanics(t *testing.T) {
 	}
 }
 
-func TestTrimSlash(t *testing.T) {
-	for in, want := range map[string]string{"/a.B/C": "a.B/C", "a.B/C": "a.B/C", "": ""} {
-		if got := trimSlash(in); got != want {
-			t.Errorf("trimSlash(%q) = %q, want %q", in, got, want)
+func TestRPCMethod(t *testing.T) {
+	long := "/" + strings.Repeat("a", maxRPCMethod+10)
+	for in, want := range map[string]string{
+		"/a.B/C": "a.B/C",
+		"a.B/C":  "a.B/C",
+		"":       "",
+		long:     strings.Repeat("a", maxRPCMethod) + truncatedMarker,
+	} {
+		if got := rpcMethod(in); got != want {
+			t.Errorf("rpcMethod(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+type secretPanic struct{ password string }
+
+type panickyErr struct{}
+
+func (panickyErr) Error() string { panic("Error() itself panics") }
+
+// The panic value is never rendered: only a string or error payload contributes
+// text, bounded on a rune boundary; an Error() that panics cannot escape.
+func TestPanicMessage(t *testing.T) {
+	cases := map[string]struct {
+		in   any
+		want string
+	}{
+		"string":        {"boom", "!PANIC (string): boom"},
+		"error":         {errors.New("bad"), "!PANIC (*errors.errorString): bad"},
+		"struct hidden": {secretPanic{password: "hunter2"}, "!PANIC (grpcx.secretPanic)"},
+		"int hidden":    {42, "!PANIC (int)"},
+		"panicky Error": {panickyErr{}, "!PANIC (grpcx.panickyErr): error whose Error() panics"},
+	}
+	for name, tc := range cases {
+		if got := panicMessage(tc.in); got != tc.want {
+			t.Errorf("%s: panicMessage = %q, want %q", name, got, tc.want)
+		}
+	}
+	long := panicMessage(strings.Repeat("é", 300))
+	if !strings.HasSuffix(long, truncatedMarker) || !utf8.ValidString(long) || len(long) > maxPanicMessage+len(truncatedMarker) {
+		t.Errorf("long message not bounded on a rune boundary: %q", long)
 	}
 }
