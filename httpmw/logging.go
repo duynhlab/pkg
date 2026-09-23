@@ -20,6 +20,9 @@ const (
 	TraceParentHeader = "traceparent"
 
 	ctxKeyLogger = "logger"
+	// ctxKeyPanicked is set by Recovery, so Logging can report a panic that
+	// happened after the handler already wrote its status.
+	ctxKeyPanicked = "httpmw.panicked"
 )
 
 // TraceID returns the correlation id for a request, preferring the active
@@ -105,13 +108,17 @@ func Logging(logger *slog.Logger, extraSkipRoutes ...string) gin.HandlerFunc {
 		c.Next()
 
 		status := c.Writer.Status()
+		// A handler that wrote its status and then panicked keeps that
+		// status on the wire — Recovery cannot change it — so the mark, not
+		// the status, is what says the request failed.
+		panicked := c.GetBool(ctxKeyPanicked)
 
 		// Routine SUCCESSFUL probes are traffic about the platform, not the
 		// domain — Tracing excludes them from spans and RED metrics through this
 		// same skip list, and excluding them here is what makes that contract
 		// true for logs too. A FAILING probe is always kept: that is the one time
 		// a probe is worth reading.
-		if skip(c) && status < 400 {
+		if skip(c) && status < 400 && !panicked {
 			return
 		}
 
@@ -121,7 +128,12 @@ func Logging(logger *slog.Logger, extraSkipRoutes ...string) gin.HandlerFunc {
 			attrs = append(attrs, slog.String("http.route", route))
 		}
 		attrs = append(attrs, slog.Int("http.response.status_code", status))
-		if status >= 500 {
+		level := levelFor(status)
+		switch {
+		case panicked:
+			level = slog.LevelError
+			attrs = append(attrs, slog.String("error.type", "panic"))
+		case status >= 500:
 			// The semantic conventions name a server failure that carries no
 			// exception by its status code, as a string. The pinned otelgin puts
 			// no such value on the span — it marks the span Error and sets
@@ -129,7 +141,7 @@ func Logging(logger *slog.Logger, extraSkipRoutes ...string) gin.HandlerFunc {
 			// value, not a copy of the span's.
 			attrs = append(attrs, slog.String("error.type", strconv.Itoa(status)))
 		}
-		logger.LogAttrs(c.Request.Context(), levelFor(status), "HTTP request", attrs...)
+		logger.LogAttrs(c.Request.Context(), level, "HTTP request", attrs...)
 	}
 }
 
@@ -165,9 +177,8 @@ func levelFor(status int) slog.Level {
 var discard = slog.New(slog.DiscardHandler)
 
 // LoggerFrom returns the logger Logging was given, bound to the request: a call
-// that carries no span of its own — logger.Info(msg), the shape every handler
-// wrote with zap — is still written with the request's context, so it keeps
-// the trace and span ids. A call that passes a context with a span of its own
+// that carries no span of its own — a context-less logger.Info(msg) — is still
+// written with the request's span, so it keeps the trace and span ids. A call that passes a context with a span of its own
 // (a child span a handler started) keeps that one. Falls back to a silent
 // logger when Logging was not mounted.
 func LoggerFrom(c *gin.Context) *slog.Logger {
@@ -182,8 +193,8 @@ func LoggerFrom(c *gin.Context) *slog.Logger {
 	return slog.New(requestBound{next: l.Handler(), req: c.Request.Context()})
 }
 
-// requestBound supplies the request context to a record whose own context has
-// no span.
+// requestBound supplies the request span to a record whose own context has
+// none, keeping the rest of the caller's context.
 type requestBound struct {
 	next slog.Handler
 	req  context.Context
@@ -206,8 +217,11 @@ func (h requestBound) WithGroup(name string) slog.Handler {
 }
 
 func (h requestBound) pick(ctx context.Context) context.Context {
-	if ctx != nil && trace.SpanContextFromContext(ctx).IsValid() {
+	if ctx == nil {
+		return h.req
+	}
+	if trace.SpanContextFromContext(ctx).IsValid() {
 		return ctx
 	}
-	return h.req
+	return trace.ContextWithSpan(ctx, trace.SpanFromContext(h.req))
 }

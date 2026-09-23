@@ -146,3 +146,33 @@ func TestRecovery_NilLoggerUsesDefaultAtPanicTime(t *testing.T) {
 }
 
 func utf8Valid(s string) bool { return strings.ToValidUTF8(s, "�") == s }
+
+// A handler that wrote 200 and then panicked keeps 200 on the wire; the access
+// summary must still say the request failed.
+func TestRecovery_PanicAfterWriteIsStillAFailure(t *testing.T) {
+	h := &capture{}
+	r := recoveryRouter(h, func(c *gin.Context) {
+		c.String(http.StatusOK, "partial")
+		panic("late")
+	})
+	if rec := get(t, r, "/items/1"); rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want the already-written 200", rec.Code)
+	}
+	rec, a, _ := h.last(t)
+	if rec.Level != slog.LevelError || a["error.type"].String() != "panic" || a["http.response.status_code"].Int64() != 200 {
+		t.Errorf("summary = %v %v, want Error, error.type=panic, status 200", rec.Level, a)
+	}
+}
+
+// A panicking probe is a failing probe: never skipped.
+func TestRecovery_PanickingProbeIsLogged(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := &capture{}
+	r := gin.New()
+	r.Use(httpmw.Logging(slog.New(h)), httpmw.Recovery(slog.New(h)))
+	r.GET("/health", func(c *gin.Context) { c.Status(http.StatusOK); panic("probe") })
+	get(t, r, "/health")
+	if h.len() != 2 {
+		t.Errorf("records = %d, want the panic record and the probe's summary", h.len())
+	}
+}

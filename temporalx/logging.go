@@ -30,7 +30,10 @@ type DialOption func(*client.Options)
 // interceptor attaches the ids as "TraceID"/"SpanID" attributes instead. The
 // logger is wrapped so those attributes become the record's span context —
 // the platform handler then stamps trace_id/span_id like any other record —
-// rather than a second, differently spelled pair of fields.
+// rather than a second, differently spelled pair of fields. The interceptor
+// passes no trace flags, so the lifted span context reads unsampled; nothing
+// filters logs on that flag today, and forcing it would be untrue for an
+// unsampled span.
 func WithLogger(l *slog.Logger) DialOption {
 	if l == nil {
 		// Dial rejects a nil option with an actionable error — the same

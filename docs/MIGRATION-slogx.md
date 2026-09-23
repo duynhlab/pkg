@@ -92,7 +92,9 @@ What changes for readers of the access records:
   request, so a handler's `LoggerFrom(c).Info("…")` keeps the ids too.
 - **Panics** are one structured record (`error.type=panic`, bounded
   `exception.message` naming the panic's type, bounded
-  `exception.stacktrace`), never gin's or grpc-go's text output. Build the
+  `exception.stacktrace`), never gin's or grpc-go's text output; the HTTP
+  access summary for that request is Error with `error.type=panic`, even
+  when the handler had already written a 2xx before panicking. Build the
   router with `gin.New()`: `gin.Default()` installs gin's own logger and
   recovery, which print the raw path and client address past the facade.
 - **Temporal**: the tracing interceptor's `TraceID`/`SpanID` attributes

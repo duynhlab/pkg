@@ -308,6 +308,8 @@ func TestLogging_NonStandardMethodIsOther(t *testing.T) {
 // a call with no context of its own still carries the request span, and a call
 // that passes a span of its own keeps that one. Without Logging it is silent —
 // a second, uncorrelated logger would hide that mistake; silence surfaces it.
+type callerKey struct{}
+
 func TestLoggerFrom(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	tp := sdktrace.NewTracerProvider()
@@ -337,7 +339,7 @@ func TestLoggerFrom(t *testing.T) {
 		span.End()
 		ctxs = append(ctxs, h.ctxs[len(h.ctxs)-1])
 
-		l.InfoContext(context.Background(), "spanless context")
+		l.InfoContext(context.WithValue(context.Background(), callerKey{}, "kept"), "spanless context")
 		ctxs = append(ctxs, h.ctxs[len(h.ctxs)-1])
 		c.Status(http.StatusOK)
 	})
@@ -347,6 +349,9 @@ func TestLoggerFrom(t *testing.T) {
 		if got := oteltrace.SpanContextFromContext(ctxs[i]); got.SpanID() != want.SpanID() {
 			t.Errorf("record %d: span = %s, want %s", i, got.SpanID(), want.SpanID())
 		}
+	}
+	if ctxs[2].Value(callerKey{}) != "kept" {
+		t.Error("a spanless caller context must keep its own values; only the span is added")
 	}
 	if childSpan.SpanID() == reqSpan.SpanID() {
 		t.Fatal("test setup: the child span must differ from the request span")

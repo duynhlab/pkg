@@ -5,6 +5,9 @@ import (
 	"unicode/utf8"
 )
 
+// This file has a twin, grpcx/panic.go — the modules are independent, so
+// the helpers are copied rather than shared. Change both together.
+
 // Bounds for a recovered panic. A stack is worth its bytes on the rare record
 // that carries one, but a deep one runs to tens of kilobytes and the record may
 // be kept for months; the message is a display phrase, not a dump.

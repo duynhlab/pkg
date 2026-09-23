@@ -14,9 +14,11 @@ import (
 // ONE structured record through logger — never gin's default text output, which
 // prints the raw path and client address to stdout past the logging facade.
 //
-// Mount it after Logging, so it runs inside it: the recovered request then
-// reaches Logging's summary as an ordinary 500 and the one-summary-per-call rule
-// holds. Build the engine with gin.New(), not gin.Default(), which installs
+// Mount it after Logging, so it runs inside it: the recovered request reaches
+// Logging's summary as a 500 at Error with error.type=panic, and the
+// one-summary-per-call rule holds. A handler that had already written its
+// status keeps it on the wire (it cannot be changed after the fact); the
+// summary then carries that status, still at Error with error.type=panic. Build the engine with gin.New(), not gin.Default(), which installs
 // gin's own recovery and logger outside this chain:
 //
 //	r := gin.New()
@@ -52,6 +54,7 @@ func Recovery(logger *slog.Logger) gin.HandlerFunc {
 				slog.String("exception.stacktrace", bound(string(debug.Stack()), maxPanicStack)),
 			)
 			l.LogAttrs(c.Request.Context(), slog.LevelError, "HTTP handler panicked", attrs...)
+			c.Set(ctxKeyPanicked, true)
 			c.AbortWithStatus(http.StatusInternalServerError)
 		}()
 		c.Next()
