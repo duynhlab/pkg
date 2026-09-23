@@ -20,7 +20,8 @@ go get github.com/duynhlab/pkg/logger/zapx@v0.36.0  # tag: logger/zapx/v0.36.0
 Module tags continue the pre-split numbering (the last single-module tag was
 `v0.35.0`). Migrating a service from the single-module `pkg`? See
 [docs/MIGRATION.md](docs/MIGRATION.md) — import paths don't change, only
-`go.mod` does.
+`go.mod` does. Moving a service's logging from `logger/zapx` to the facade?
+See [docs/MIGRATION-slogx.md](docs/MIGRATION-slogx.md).
 
 ## Modules
 
@@ -30,7 +31,8 @@ Modules are layered; lower layers never import higher ones (see
 | Module | Layer | What it provides |
 |--------|-------|------------------|
 | [`proto`](./proto) | 0 | Versioned gRPC contracts for all services (`<svc>/v1/*.proto`) with **committed** generated stubs. |
-| [`logger/zapx`](./logger/zapx) | 0 | zap logger construction with trace-ID injection — the production default, pairs with `obsx.ZapCore`. |
+| [`logger/slogx`](./logger/slogx) | 0 | **The application logging facade** (RFC-0031 / ADR-070): one context-first `log/slog` API, the platform JSON envelope on stdout and OTLP from one redacted record, a mandatory privacy boundary and `Event` for catalog records. |
+| [`logger/zapx`](./logger/zapx) | 0 | zap logger construction with trace-ID injection — the production default until services adopt `logger/slogx`, pairs with `obsx.ZapCore`. |
 | [`logger/clog`](./logger/clog) | 0 | `log/slog` + chainguard-dev/clog logger with trace-context correlation. |
 | [`logger/zerolog`](./logger/zerolog) | 0 | rs/zerolog logger with trace-ID injection. |
 | [`flagx`](./flagx) | 0 | Startup-validated environment flags (`Enum`, `Percent` + `Must*`) — fail fast, bounded values safe for metric labels. |
