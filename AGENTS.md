@@ -30,7 +30,7 @@ Before submitting code, review your changes for the following:
 
 ## Project overview
 
-`duynhlab/pkg` is the shared Go SDK for the platform's microservices (`auth`, `user`, `product`, `cart`, `order`, `review`, `shipping`, `notification`, `payment`, `checkout` — all built as `web → logic → core` layered services). It is a **multi-module monorepo** — there is no top-level `go.mod`; all code lives in the 13 per-directory modules, each independently versioned and tagged (e.g. `httpx/v0.36.0`, `obsx/v0.36.0`, `logger/zapx/v0.36.0`). Services import specific modules from this repo.
+`duynhlab/pkg` is the shared Go SDK for the platform's microservices (`auth`, `user`, `product`, `cart`, `order`, `review`, `shipping`, `notification`, `payment`, `checkout` — all built as `web → logic → core` layered services). It is a **multi-module monorepo** — there is no top-level `go.mod`; all code lives in the 15 per-directory modules, each independently versioned and tagged (e.g. `httpx/v0.36.0`, `obsx/v0.36.0`, `logger/zapx/v0.36.0`). Services import specific modules from this repo.
 
 The repository provides: generated gRPC/protobuf contracts, structured logging, OpenTelemetry bootstrap, HTTP and gRPC transport helpers, authentication middleware, database access, migrations, startup flags, idempotency handling, and Temporal client/worker helpers.
 
@@ -39,7 +39,8 @@ The repository provides: generated gRPC/protobuf contracts, structured logging, 
 There is **no top-level `go.mod`** — the single-module line (`github.com/duynhlab/pkg`) is frozen at `v0.35.0` and will never publish another version. Each of the 13 modules has its own `go.mod`:
 
 - `proto/` — one module holding the versioned gRPC contracts for all services (`cart`, `inventory`, `notification`, `order`, `payment`, `product`, `review`, `shipping`, each under `<svc>/v1/`). Source `.proto` files and the **committed** generated `.pb.go` stubs live together; `buf` drives codegen from the repo root.
-- `logger/zapx/`, `logger/zerolog/`, `logger/clog/` — three independent logger modules, one per backend. `logger/zapx` (zap) is the production default — every service uses it and it pairs with `obsx.ZapCore` for OTLP log export. `logger/clog` (stdlib `log/slog` via chainguard-dev/clog) is the slog-based alternative; `logger/zerolog` wraps rs/zerolog. All inject the active trace ID into log lines.
+- `logger/slogx/` — **the application logging facade** (RFC-0031 / ADR-070): one context-first `log/slog` API that renders a single redacted record to the platform JSON envelope on stdout and over OTLP, with a mandatory privacy boundary and `Event` for catalog records. Services adopt it in Phase 3; see [docs/MIGRATION-slogx.md](docs/MIGRATION-slogx.md).
+- `logger/zapx/`, `logger/zerolog/`, `logger/clog/` — three independent logger modules, one per backend, retired as services adopt `logger/slogx`. `logger/zapx` (zap) is the production default today — every service uses it and it pairs with `obsx.ZapCore` for OTLP log export. `logger/clog` (stdlib `log/slog` via chainguard-dev/clog) is the slog-based alternative; `logger/zerolog` wraps rs/zerolog. All inject the active trace ID into log lines.
 - `flagx/` — startup-validated environment flags (`Enum`/`MustEnum`, `Percent`/`MustPercent`). Values are read and validated once at startup, fail fast, and are bounded by construction so they are safe as metric labels.
 - `httpx/` — shared HTTP helpers on gin: consistent error responses (`RespondError`) and pagination (`ParsePage`, `NewPaginated`).
 - `grpcx/` — gRPC server and client helpers for east-west calls: `NewServer` (otelgrpc stats handler, health service, reflection, panic recovery, access logging), `Dial` (otelgrpc, `round_robin` over `dns:///`, default per-RPC deadline), machine-readable error reasons (`reasons.go`), telemetry filters.
@@ -55,8 +56,8 @@ There is **no top-level `go.mod`** — the single-module line (`github.com/duynh
 
 This is the most important thing to understand about this repo:
 
-- **Every directory with a `go.mod` is an independent module.** There are 13 taggable modules.
-- **Each module gets its own git tag** in the form `<module-path>/v<semver>` (e.g. `httpx/v0.36.0`, `logger/zapx/v0.36.0`). Module tags continue the pre-split numbering — the last single-module tag was `v0.35.0`, so per-module history starts at `v0.36.0`.
+- **Every directory with a `go.mod` is an independent module.** There are 15 taggable modules (counted at `find . -name go.mod`; the figure was two low before `httpmw` and `logger/slogx`).
+- **Each module gets its own git tag** in the form `<module-path>/v<semver>` (e.g. `httpx/v0.36.0`, `logger/zapx/v0.36.0`). Module tags continue the pre-split numbering — the last single-module tag was `v0.35.0`, so per-module history starts at `v0.36.0`. A module first published after the split starts its own history at `v0.1.0` instead (`httpmw`, `logger/slogx`).
 - **External consumers** import specific tagged versions: `go get github.com/duynhlab/pkg/httpx@v0.36.0`.
 - **The old root module line is dead.** `github.com/duynhlab/pkg` is frozen at `v0.35.0`; a dependency graph that mixes the old require with a new per-module require fails immediately with `ambiguous import` (both provide the same package paths), and no newer root version will ever exist to resolve it — consumers must drop the old require entirely. Never re-create a root `go.mod` or put Go files at the repo root.
 - **There are currently no cross-module dependencies** inside this repo — every module builds standalone. Keep it that way when you can. If a genuine internal dependency ever appears, the dependent module carries a real published version in `require` **plus** a permanent sibling `replace` (e.g. `replace github.com/duynhlab/pkg/logger/zapx => ../logger/zapx`) for local development; `replace` in a non-main module is ignored by external consumers, so the `require` version must always be real.
@@ -69,7 +70,7 @@ Modules are organised in strict layers. **A module may only import modules from 
 
 **Layer 0 — foundation.** Zero internal dependencies.
 
-- `proto`, `logger/zapx`, `logger/zerolog`, `logger/clog`, `flagx`
+- `proto`, `logger/slogx`, `logger/zapx`, `logger/zerolog`, `logger/clog`, `flagx`
 
 **Layer 1 — building blocks.** May import Layer 0 only.
 
