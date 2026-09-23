@@ -2,13 +2,11 @@ package grpcx
 
 import (
 	"context"
-	"net"
 	"testing"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/peer"
 )
 
 // captureDeadlineInvoker records the deadline the interceptor hands to the
@@ -54,17 +52,6 @@ func TestDeadlineInterceptor_KeepsCallerDeadline(t *testing.T) {
 	}
 	if until := time.Until(deadline); until <= DefaultCallTimeout {
 		t.Errorf("caller's 1h deadline was tightened to %v", until)
-	}
-}
-
-func TestPeerAddr(t *testing.T) {
-	addr := &net.TCPAddr{IP: net.IPv4(10, 0, 0, 7), Port: 9090}
-	ctx := peer.NewContext(context.Background(), &peer.Peer{Addr: addr})
-	if got := peerAddr(ctx); got != addr.String() {
-		t.Errorf("peerAddr = %q, want %q", got, addr.String())
-	}
-	if got := peerAddr(context.Background()); got != "" {
-		t.Errorf("peerAddr(no peer) = %q, want empty", got)
 	}
 }
 

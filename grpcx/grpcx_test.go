@@ -50,30 +50,34 @@ func TestDial_LazyConn(t *testing.T) {
 	t.Cleanup(func() { _ = conn.Close() })
 }
 
-func TestRecoveryUnary_RecoversPanic(t *testing.T) {
-	panicking := func(context.Context, any) (any, error) { panic("boom") }
-	resp, err := recoveryUnary(
-		context.Background(), nil,
+func TestRecovery_UnaryAndStreamRecoverPanics(t *testing.T) {
+	logger, h := newLogger()
+	unary, stream := recovery(logger)
+
+	resp, err := unary(context.Background(), nil,
 		&grpc.UnaryServerInfo{FullMethod: "/test.Service/Method"},
-		panicking,
-	)
+		func(context.Context, any) (any, error) { panic("boom") })
 	if resp != nil {
 		t.Errorf("resp = %v, want nil", resp)
 	}
 	if status.Code(err) != codes.Internal {
-		t.Errorf("code = %v, want Internal", status.Code(err))
+		t.Errorf("unary code = %v, want Internal", status.Code(err))
 	}
-}
 
-func TestRecoveryStream_RecoversPanic(t *testing.T) {
-	panicking := func(any, grpc.ServerStream) error { panic("boom") }
-	err := recoveryStream(
-		nil, nil,
+	err = stream(nil, fakeServerStream{ctx: context.Background()},
 		&grpc.StreamServerInfo{FullMethod: "/test.Service/Stream"},
-		panicking,
-	)
+		func(any, grpc.ServerStream) error { panic("boom") })
 	if status.Code(err) != codes.Internal {
-		t.Errorf("code = %v, want Internal", status.Code(err))
+		t.Errorf("stream code = %v, want Internal", status.Code(err))
+	}
+	if n := len(h.byMessage("gRPC handler panicked")); n != 2 {
+		t.Errorf("want one structured record per panic, got %d", n)
+	}
+
+	// A handler that does not panic passes straight through.
+	if _, err := unary(context.Background(), nil, &grpc.UnaryServerInfo{FullMethod: "/x/y"},
+		func(context.Context, any) (any, error) { return "ok", nil }); err != nil {
+		t.Errorf("non-panicking handler: %v", err)
 	}
 }
 

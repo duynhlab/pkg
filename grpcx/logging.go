@@ -2,15 +2,11 @@ package grpcx
 
 import (
 	"context"
+	"log/slog"
 	"strings"
-	"time"
 
-	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
 
@@ -40,47 +36,82 @@ func isInfraMethod(fullMethod string) bool {
 //
 // The default is Error, not Info: a code this build does not know is a fault
 // by definition, and new codes must surface loudly rather than inherit quiet.
-func codeLevel(code codes.Code) zapcore.Level {
+func codeLevel(code codes.Code) slog.Level {
 	switch code {
 	case codes.OK, codes.NotFound, codes.Canceled, codes.AlreadyExists,
 		codes.InvalidArgument, codes.Unauthenticated:
-		return zapcore.InfoLevel
+		return slog.LevelInfo
 	case codes.DeadlineExceeded, codes.PermissionDenied, codes.ResourceExhausted,
 		codes.FailedPrecondition, codes.Aborted, codes.OutOfRange, codes.Unavailable:
-		return zapcore.WarnLevel
+		return slog.LevelWarn
 	case codes.Unknown, codes.Unimplemented, codes.Internal, codes.DataLoss:
-		return zapcore.ErrorLevel
+		return slog.LevelError
 	}
-	return zapcore.ErrorLevel
+	return slog.LevelError
 }
 
-// traceIDFromContext returns the trace ID of the span in ctx, or "" if no
-// valid span is present, so a log line joins the same trace as its span. It
-// deliberately uses only the OTel trace API: grpcx must stay importable
-// without pulling the OTel SDK (which lives in obsx and nowhere else).
-func traceIDFromContext(ctx context.Context) string {
-	sc := trace.SpanFromContext(ctx).SpanContext()
-	if sc.HasTraceID() {
-		return sc.TraceID().String()
+// canonicalCode is the status code's spec name ("NOT_FOUND", "CANCELLED") — the
+// value the pinned otelgrpc puts on the server span as rpc.response.status_code.
+// grpc-go's Code.String spells them differently ("NotFound", "Canceled"), and a
+// log that disagrees with its span on the same attribute defeats the join.
+func canonicalCode(c codes.Code) string {
+	switch c {
+	case codes.OK:
+		return "OK"
+	case codes.Canceled:
+		return "CANCELLED"
+	case codes.Unknown:
+		return "UNKNOWN"
+	case codes.InvalidArgument:
+		return "INVALID_ARGUMENT"
+	case codes.DeadlineExceeded:
+		return "DEADLINE_EXCEEDED"
+	case codes.NotFound:
+		return "NOT_FOUND"
+	case codes.AlreadyExists:
+		return "ALREADY_EXISTS"
+	case codes.PermissionDenied:
+		return "PERMISSION_DENIED"
+	case codes.ResourceExhausted:
+		return "RESOURCE_EXHAUSTED"
+	case codes.FailedPrecondition:
+		return "FAILED_PRECONDITION"
+	case codes.Aborted:
+		return "ABORTED"
+	case codes.OutOfRange:
+		return "OUT_OF_RANGE"
+	case codes.Unimplemented:
+		return "UNIMPLEMENTED"
+	case codes.Internal:
+		return "INTERNAL"
+	case codes.Unavailable:
+		return "UNAVAILABLE"
+	case codes.DataLoss:
+		return "DATA_LOSS"
+	case codes.Unauthenticated:
+		return "UNAUTHENTICATED"
 	}
-	return ""
+	return "UNKNOWN"
 }
 
-// peerAddr returns the client address from ctx, or "" when unavailable. It is
-// the gRPC analog of the HTTP access log's client_ip field.
-func peerAddr(ctx context.Context) string {
-	if p, ok := peer.FromContext(ctx); ok && p.Addr != nil {
-		return p.Addr.String()
+// serverError reports the codes the pinned otelgrpc marks the server span Error
+// for. Only those carry error.type on the access record, so the record and its
+// span agree on whether the call failed. Severity is a different question —
+// who should look — which is why DeadlineExceeded is a Warn here and still an
+// error.type.
+func serverError(c codes.Code) bool {
+	switch c {
+	case codes.Unknown, codes.DeadlineExceeded, codes.Unimplemented,
+		codes.Internal, codes.Unavailable, codes.DataLoss:
+		return true
 	}
-	return ""
+	return false
 }
 
-// accessLogUnary logs one line per incoming unary RPC, the gRPC counterpart of
-// the HTTP LoggingMiddleware: level follows the status code's class (see
-// codeLevel), with the trace_id so a log line joins the same trace as its span. Health and
-// reflection RPCs are skipped (isInfraMethod). A nil logger disables logging
-// (the interceptor still forwards the call).
-func accessLogUnary(logger *zap.Logger) grpc.UnaryServerInterceptor {
+// accessLogUnary logs one record per incoming unary RPC, the gRPC counterpart
+// of the HTTP access log. Health and reflection RPCs are skipped
+// (isInfraMethod). A nil logger disables the access log; the call still runs.
+func accessLogUnary(logger *slog.Logger) grpc.UnaryServerInterceptor {
 	return func(
 		ctx context.Context,
 		req any,
@@ -90,16 +121,15 @@ func accessLogUnary(logger *zap.Logger) grpc.UnaryServerInterceptor {
 		if logger == nil || isInfraMethod(info.FullMethod) {
 			return handler(ctx, req)
 		}
-		start := time.Now()
 		resp, err := handler(ctx, req)
-		logRPC(ctx, logger, info.FullMethod, err, time.Since(start))
+		logRPC(ctx, logger, info.FullMethod, err)
 		return resp, err
 	}
 }
 
-// accessLogStream is the streaming counterpart of accessLogUnary. It logs once
-// when the stream completes (duration covers the whole stream lifetime).
-func accessLogStream(logger *zap.Logger) grpc.StreamServerInterceptor {
+// accessLogStream is the streaming counterpart of accessLogUnary. It logs once,
+// when the stream completes.
+func accessLogStream(logger *slog.Logger) grpc.StreamServerInterceptor {
 	return func(
 		srv any,
 		ss grpc.ServerStream,
@@ -109,31 +139,30 @@ func accessLogStream(logger *zap.Logger) grpc.StreamServerInterceptor {
 		if logger == nil || isInfraMethod(info.FullMethod) {
 			return handler(srv, ss)
 		}
-		start := time.Now()
 		err := handler(srv, ss)
-		logRPC(ss.Context(), logger, info.FullMethod, err, time.Since(start))
+		logRPC(ss.Context(), logger, info.FullMethod, err)
 		return err
 	}
 }
 
-// logRPC emits the shared access-log line. Kept separate so the unary and
-// stream interceptors stay in lockstep on fields and level policy.
-//
-// Field naming vs the HTTP access log (product-service middleware): trace_id,
-// method and duration match exactly, so a "give me everything for trace_id=X"
-// query spans both protocols. The outcome and caller fields DELIBERATELY
-// differ — gRPC uses code/peer, HTTP uses status/client_ip — because a gRPC
-// status code is a distinct enum (OK/NotFound/Internal…), not an HTTP status
-// int; reusing "status" would make that VictoriaLogs field mixed-type. peer is
-// the in-cluster calling pod, not the edge client behind Kong. Cross-protocol
-// outcome filtering therefore keys on trace_id, not a shared status field.
-func logRPC(ctx context.Context, logger *zap.Logger, method string, err error, d time.Duration) {
+// logRPC writes the access record with the canonical attributes of the pinned
+// semantic conventions (RFC-0031 § Canonical attributes): rpc.system.name,
+// rpc.method as the fully-qualified "package.Service/Method" — the value the
+// span carries, without the leading slash — and rpc.response.status_code, plus
+// error.type for a server failure. It carries no peer address (in-cluster pod
+// identity is not the record's business), no duration (the span and the RPC
+// histogram measure it exactly), and no trace id field: the record is written
+// with the call's context, so a context-aware handler stamps the ids itself.
+func logRPC(ctx context.Context, logger *slog.Logger, fullMethod string, err error) {
 	code := status.Code(err)
-	logger.Log(codeLevel(code), "gRPC request",
-		zap.String("trace_id", traceIDFromContext(ctx)),
-		zap.String("method", method),
-		zap.String("code", code.String()),
-		zap.Duration("duration", d),
-		zap.String("peer", peerAddr(ctx)),
+	attrs := make([]slog.Attr, 0, 4)
+	attrs = append(attrs,
+		slog.String("rpc.system.name", "grpc"),
+		slog.String("rpc.method", strings.TrimPrefix(fullMethod, "/")),
+		slog.String("rpc.response.status_code", canonicalCode(code)),
 	)
+	if serverError(code) {
+		attrs = append(attrs, slog.String("error.type", canonicalCode(code)))
+	}
+	logger.LogAttrs(ctx, codeLevel(code), "gRPC request", attrs...)
 }
