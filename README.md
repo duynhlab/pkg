@@ -33,7 +33,7 @@ Modules are layered; lower layers never import higher ones (see
 |--------|-------|------------------|
 | [`proto`](./proto) | 0 | Versioned gRPC contracts for all services (`<svc>/v1/*.proto`) with **committed** generated stubs. |
 | [`logger/slogx`](./logger/slogx) | 0 | **The application logging facade** (RFC-0031 / ADR-070): one context-first `log/slog` API, the platform JSON envelope on stdout and OTLP from one redacted record, a mandatory privacy boundary and `Event` for catalog records. |
-| [`logger/zapx`](./logger/zapx) | 0 | zap logger construction with trace-ID injection — the production default until services adopt `logger/slogx`, pairs with `obsx.ZapCore`. |
+| [`logger/zapx`](./logger/zapx) | 0 | zap logger construction with trace-ID injection — the production default until services adopt `logger/slogx`; its OTLP tee (`obsx.ZapCore`) left obsx in v0.45.0, so it pairs only with obsx ≤ v0.44. |
 | [`logger/clog`](./logger/clog) | 0 | `log/slog` + chainguard-dev/clog logger with trace-context correlation. |
 | [`logger/zerolog`](./logger/zerolog) | 0 | rs/zerolog logger with trace-ID injection. |
 | [`flagx`](./flagx) | 0 | Startup-validated environment flags (`Enum`, `Percent` + `Must*`) — fail fast, bounded values safe for metric labels. |
@@ -41,7 +41,7 @@ Modules are layered; lower layers never import higher ones (see
 | [`grpcx`](./grpcx) | 1 | gRPC server/client for east-west calls: otelgrpc, health, reflection, panic recovery, access logs, error reasons. |
 | [`authmw`](./authmw) | 1 | Fail-closed gin OIDC middleware (pinned alg + cached JWKS, issuer/audience pinned, role normalization + `MiddlewareRequireRole`). |
 | [`idempotency`](./idempotency) | 1 | Stripe-style idempotency keys: `Record`, sentinel errors, Postgres `Repository` over `*pgxpool.Pool`. |
-| [`obsx`](./obsx) | 2 | OpenTelemetry SDK bootstrap — traces + metrics + logs over OTLP, zap bridge, Pyroscope profiling. The only module linking the OTel SDK. |
+| [`obsx`](./obsx) | 2 | OpenTelemetry SDK bootstrap — traces + metrics + logs over OTLP (the log provider is installed as the OTel global, where `logger/slogx` finds it), `ForceFlush` for the FATAL path, Pyroscope profiling. The only module linking the OTel SDK. |
 | [`dbx`](./dbx) | 2 | Postgres `pgxpool` builder with otelpgx tracing and pool metrics, pooler-safe settings, no PII in telemetry. |
 | [`migratex`](./migratex) | 2 | Embedded SQL migrations runner (golang-migrate). |
 | [`temporalx`](./temporalx) | 2 | Temporal client/worker bootstrap with OTel tracing and Worker Deployment Versioning. |
