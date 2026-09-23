@@ -10,7 +10,7 @@ does change shape — the error, see the table — and the rest is the call site
 
 | | Before | After |
 |---|---|---|
-| Construction | `zapx.New(os.Getenv("LOG_LEVEL"))` + `obsx.ZapCore` for the OTLP side | `slogx.New(slogx.Config{Level: os.Getenv("LOG_LEVEL")})` — both sinks |
+| Construction | `zapx.New(os.Getenv("LOG_LEVEL"))` + `obsx.ZapCore` for the OTLP side | `slogx.New(slogx.Config{Level: os.Getenv("LOG_LEVEL"), Flush: obs.ForceFlush})` — both sinks |
 | Call | `log.Info("msg", zap.String("k", v))` | `log.Info(ctx, "msg", slog.String("k", v))` |
 | Errors | `zap.Error(err)` → `"error": "<text>"` | `slogx.Err(err)` → `"error.type"` + `"error.message"` |
 | Trace correlation | `obsx.TraceContext(ctx)` passed as a field | automatic — the context is the first argument |
@@ -40,6 +40,12 @@ Move `obsx` to **v0.45.0** in the same change: it removes `ZapCore` and
 service cannot end up half-migrated) and adds `ForceFlush`. `slogx` reads the
 logger provider from the OTel global obsx installs, so `main()` never hands it
 one.
+
+The same change bumps the transport and worker adapters to their slog
+releases — `httpmw` v0.2.0, `grpcx` v0.37.0, `temporalx` v0.40.0 (see
+[Transport and worker adapters](#transport-and-worker-adapters)); the older
+tags need the zap bridge v0.45.0 removed. A service that has not migrated stays
+on obsx v0.44.x, which remains the patch line until the fleet has cut over.
 
 ## The bootstrap
 

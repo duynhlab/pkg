@@ -20,6 +20,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
+	tracenoop "go.opentelemetry.io/otel/trace/noop"
 )
 
 func TestConfigFromEnv_Defaults(t *testing.T) {
@@ -447,21 +448,80 @@ func TestSetupObservability_LogsBridge(t *testing.T) {
 	}
 }
 
-// ForceFlush reaches every built provider, including a factory-built tracer
-// provider that implements it, and joins their errors.
-func TestObservability_ForceFlushJoinsEveryProvider(t *testing.T) {
-	calls := 0
+// flushingTracerProvider is a factory-built tracer provider whose ForceFlush
+// records its turn and fails; plainTracerProvider has no ForceFlush at all.
+type flushingTracerProvider struct {
+	tracenoop.TracerProvider
+	order *[]string
+	err   error
+}
+
+func (p flushingTracerProvider) Shutdown(context.Context) error { return nil }
+func (p flushingTracerProvider) ForceFlush(context.Context) error {
+	*p.order = append(*p.order, "traces")
+	return p.err
+}
+
+type plainTracerProvider struct{ tracenoop.TracerProvider }
+
+func (plainTracerProvider) Shutdown(context.Context) error { return nil }
+
+// orderLogExporter records when the log provider's buffer is exported.
+type orderLogExporter struct {
+	capturingLogExporter
+	order *[]string
+}
+
+func (e *orderLogExporter) Export(ctx context.Context, recs []sdklog.Record) error {
+	*e.order = append(*e.order, "logs")
+	return e.capturingLogExporter.Export(ctx, recs)
+}
+
+// ForceFlush flushes logs before traces — the FATAL record must not wait
+// behind the span export for its share of the deadline — reaches a factory
+// tracer provider that implements it, reports its error, and still flushes
+// the rest.
+func TestObservability_ForceFlushLogsFirstAndJoinsErrors(t *testing.T) {
+	ctx := context.Background()
+	var order []string
 	boom := errors.New("collector refused")
-	obs := &Observability{flushes: []func(context.Context) error{
-		func(context.Context) error { calls++; return nil },
-		func(context.Context) error { calls++; return boom },
-		func(context.Context) error { calls++; return nil },
-	}}
-	if err := obs.ForceFlush(context.Background()); !errors.Is(err, boom) {
-		t.Errorf("ForceFlush must report a provider's error: %v", err)
+	obs, err := SetupObservability(ctx,
+		Config{ServiceName: "t", TracesEnabled: true, LogsEnabled: true},
+		WithTracerProviderFactory(func(TracerProviderConfig) ShutdownTracerProvider {
+			return flushingTracerProvider{order: &order, err: boom}
+		}),
+		withLogExporter(&orderLogExporter{order: &order}))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if calls != 3 {
-		t.Errorf("a failing provider must not starve the rest: %d of 3 ran", calls)
+	t.Cleanup(func() { _ = obs.Shutdown(ctx) })
+
+	var rec otellog.Record
+	rec.SetBody(attribute.StringValue("fatal"))
+	global.GetLoggerProvider().Logger("t").Emit(ctx, rec)
+
+	if err := obs.ForceFlush(ctx); !errors.Is(err, boom) {
+		t.Errorf("ForceFlush must report the tracer provider's error: %v", err)
+	}
+	if len(order) != 2 || order[0] != "logs" || order[1] != "traces" {
+		t.Errorf("flush order = %v, want [logs traces]", order)
+	}
+}
+
+// A factory-built tracer provider without ForceFlush is skipped, not an error.
+func TestObservability_ForceFlushSkipsFactoryWithoutIt(t *testing.T) {
+	ctx := context.Background()
+	obs, err := SetupObservability(ctx,
+		Config{ServiceName: "t", TracesEnabled: true},
+		WithTracerProviderFactory(func(TracerProviderConfig) ShutdownTracerProvider {
+			return plainTracerProvider{}
+		}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = obs.Shutdown(ctx) })
+	if err := obs.ForceFlush(ctx); err != nil {
+		t.Errorf("ForceFlush = %v, want nil", err)
 	}
 }
 

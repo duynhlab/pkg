@@ -466,15 +466,22 @@ func exportInterval(d time.Duration) time.Duration {
 // buffered, without stopping them. It exists for the one record nothing runs
 // after: wire it into the facade as slogx.Config{Flush: obs.ForceFlush} and a
 // FATAL record leaves the process before it exits, instead of dying in the
-// batch processor. Call Fatal before Shutdown — a stopped provider exports
-// nothing. Safe on a nil or signal-less Observability.
+// batch processor.
+//
+// Logs flush FIRST (reverse construction order, as Shutdown): the caller gives
+// the whole flush one deadline, and a slow collector — a plausible reason the
+// process is dying — must not spend it on spans and metrics before the FATAL
+// record's turn. A factory-built tracer provider is flushed only if it has a
+// ForceFlush(context.Context) error method. Call Fatal before Shutdown: after
+// it the providers export nothing, and the metric reader reports
+// ErrReaderShutdown. Safe on a nil or signal-less Observability.
 func (o *Observability) ForceFlush(ctx context.Context) error {
 	if o == nil {
 		return nil
 	}
 	var errs []error
-	for _, f := range o.flushes {
-		if err := f(ctx); err != nil {
+	for i := len(o.flushes) - 1; i >= 0; i-- {
+		if err := o.flushes[i](ctx); err != nil {
 			errs = append(errs, err)
 		}
 	}
