@@ -65,6 +65,42 @@ reaches stdout only (Vector still ships it to VictoriaLogs; it will be absent
 from the 90-day store). `obsx` does not expose a log force-flush yet — wire
 the field when it does. Nothing else about Fatal changes.
 
+## Transport and worker adapters
+
+`httpmw`, `grpcx` and `temporalx` take a `*slog.Logger`; hand them the
+facade's `Slog()`. Bump them in the same change as the facade — the old tags
+take a `*zap.Logger` and will not compile against it:
+
+| Module | Minimum | Wiring |
+|---|---|---|
+| `httpmw` | v0.2.0 | `r := gin.New()`; `r.Use(httpmw.Tracing(name), httpmw.Logging(log.Slog()), httpmw.Recovery(log.Slog()))` |
+| `grpcx` | v0.37.0 | `grpcx.NewServer(log.Slog(), opts...)` |
+| `temporalx` | v0.40.0 | `temporalx.Dial(cfg, temporalx.WithLogger(log.Slog()))` |
+
+What changes for readers of the access records:
+
+- **HTTP** records carry `http.request.method` (non-standard methods become
+  `_OTHER`), `http.route` (omitted when nothing matched), and
+  `http.response.status_code`, plus `error.type` for a 5xx. `method`, `path`,
+  `status`, `duration`, `client_ip` and `user_agent` are gone.
+- **gRPC** records carry `rpc.system.name`, `rpc.method` (no leading slash)
+  and `rpc.response.status_code` in the spec spelling (`NOT_FOUND`), plus
+  `error.type` for the codes the span marks as Error. `method`, `code`,
+  `duration`, `peer` and the bound `trace_id` field are gone.
+- **Correlation** comes from the context on both: the envelope's `trace_id`
+  and `span_id` are the span's. `httpmw.LoggerFrom(c)` is bound to the
+  request, so a handler's `LoggerFrom(c).Info("…")` keeps the ids too.
+- **Panics** are one structured record (`error.type=panic`, bounded
+  `exception.message` naming the panic's type, bounded
+  `exception.stacktrace`), never gin's or grpc-go's text output; the HTTP
+  access summary for that request is Error with `error.type=panic`, even
+  when the handler had already written a 2xx before panicking. Build the
+  router with `gin.New()`: `gin.Default()` installs gin's own logger and
+  recovery, which print the raw path and client address past the facade.
+- **Temporal**: the tracing interceptor's `TraceID`/`SpanID` attributes
+  become the record's span context, so workflow and activity lines carry the
+  canonical `trace_id`/`span_id` instead of a second pair of fields.
+
 ## Call sites
 
 `gofmt -r` rewrites the mechanical half; the context argument is the part a

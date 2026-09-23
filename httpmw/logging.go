@@ -4,52 +4,13 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"log/slog"
+	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
-
-// traceContextFieldKey names the carrier field. It never appears in output: the
-// otelzap bridge consumes it by Interface type-assertion and every zap encoder
-// skips SkipType. The key exists only for debuggability.
-const traceContextFieldKey = "otel.trace_context"
-
-// traceContextField binds ctx to a log call so the otelzap bridge stamps the
-// OTLP record with native trace_id/span_id — the semconv log-to-trace link,
-// stronger than a hand-added string field.
-//
-// The field is SkipType carrying ctx as its Interface: the bridge finds it via
-// field.Interface.(context.Context) (otelzap core.go convertField), while every
-// zap encoder skips SkipType, so the raw context never pollutes stdout under a
-// zapcore.NewTee(stdout, obs.ZapCore(...)) fan-out.
-//
-// obsx.TraceContext is the same five lines and stays the public API services
-// call directly. This copy is deliberate and unexported: pkg is thirteen
-// independent modules with no cross-module edge, and importing obsx from here
-// would be the first — buying a tag-ordering dance on every release to save
-// five lines. TestTraceContextField_IsSkipTypeCarryingContext pins the shape, so
-// if otelzap ever changes how it detects the field, this copy fails on its own
-// rather than drifting quietly.
-func traceContextField(ctx context.Context) zap.Field {
-	if ctx == nil {
-		return zap.Skip()
-	}
-	return zap.Field{Key: traceContextFieldKey, Type: zapcore.SkipType, Interface: ctx}
-}
-
-// traceIDFromContext returns the active span's trace id, or "" when there is no
-// span. This is a direct read of the OTel API, which every module may import.
-func traceIDFromContext(ctx context.Context) string {
-	sc := trace.SpanFromContext(ctx).SpanContext()
-	if sc.HasTraceID() {
-		return sc.TraceID().String()
-	}
-	return ""
-}
 
 const (
 	// TraceIDHeader is the response header carrying the correlation id back to
@@ -58,8 +19,10 @@ const (
 	// TraceParentHeader is the W3C Trace Context request header.
 	TraceParentHeader = "traceparent"
 
-	ctxKeyTraceID = "trace_id"
-	ctxKeyLogger  = "logger"
+	ctxKeyLogger = "logger"
+	// ctxKeyPanicked is set by Recovery, so Logging can report a panic that
+	// happened after the handler already wrote its status.
+	ctxKeyPanicked = "httpmw.panicked"
 )
 
 // TraceID returns the correlation id for a request, preferring the active
@@ -67,43 +30,37 @@ const (
 // freshly generated id.
 //
 // The generated fallback is a CLIENT contract, not telemetry: it lets a caller
-// correlate by header even when nothing is sampled. It must never be logged as
-// trace_id — see Logging, which only ever logs the span's id.
+// correlate by header even when nothing is sampled. It is never logged as a
+// trace id — the access record takes its ids from the span, through the
+// context. An inbound value is echoed only when it is a well-formed 32-hex trace
+// id, so a client cannot bounce an arbitrary string off the response header.
 func TraceID(c *gin.Context) string {
-	if id := traceIDFromContext(c.Request.Context()); id != "" {
-		return id
+	if sc := trace.SpanFromContext(c.Request.Context()).SpanContext(); sc.HasTraceID() {
+		return sc.TraceID().String()
 	}
 	if tp := c.GetHeader(TraceParentHeader); tp != "" {
 		// traceparent is version-traceid-parentid-flags.
-		if parts := strings.Split(tp, "-"); len(parts) >= 2 && parts[1] != "" {
+		if parts := strings.Split(tp, "-"); len(parts) >= 2 && isTraceID(parts[1]) {
 			return parts[1]
 		}
 	}
-	if id := c.GetHeader(TraceIDHeader); id != "" {
+	if id := c.GetHeader(TraceIDHeader); isTraceID(id) {
 		return id
 	}
 	return generateTraceID()
 }
 
-// maxLoggedValueLen caps request-derived strings before they reach a log
-// record. User-Agent in particular is attacker-controlled and unbounded — a
-// client can send a hundred kilobytes of it on every request and inflate log
-// volume, storage, and bill without ever tripping a rate limit.
-//
-// This also settles CodeQL's log-injection finding at the source rather than
-// with a suppression. Forging a record by injecting a newline is already
-// prevented by the JSON encoder, which escapes control characters — but this is
-// a library, and it cannot promise the caller's encoder does. Bounding the value
-// is the part that holds either way.
-const maxLoggedValueLen = 256
-
-// bounded truncates s for logging and marks that it was cut, so nobody reads a
-// clipped User-Agent as the whole thing.
-func bounded(s string) string {
-	if len(s) <= maxLoggedValueLen {
-		return s
+// isTraceID reports a W3C trace id: 32 lowercase hex digits, not all zero.
+func isTraceID(s string) bool {
+	if len(s) != 32 || s == "00000000000000000000000000000000" {
+		return false
 	}
-	return s[:maxLoggedValueLen] + "…(truncated)"
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 func generateTraceID() string {
@@ -114,108 +71,157 @@ func generateTraceID() string {
 	return hex.EncodeToString(b)
 }
 
-// Logging returns the platform's HTTP access-log middleware: one structured
-// record per request, at a level chosen by status class.
+// Logging returns the platform's HTTP access-log middleware: one record per
+// served request, at a level chosen by status class, carrying the canonical
+// semantic attributes and nothing request-derived beyond them (RFC-0031 §
+// Canonical attributes, ADR-071).
 //
-// Mount it after Tracing so the active span exists and its id can be bound.
+// The record carries http.request.method (normalised as the semantic
+// conventions define it: the nine standard methods, anything else "_OTHER" —
+// the value the span carries, and not a field a client can fill), http.route —
+// the matched, low-cardinality route template, omitted when nothing matched
+// rather than replaced by the raw path — http.response.status_code, and
+// error.type for a server failure. It deliberately carries no raw path or
+// query, client address, User-Agent, or duration: the path and the query leak
+// identifiers, the address and User-Agent are personal data, and the span and
+// the RED histogram already measure the duration exactly.
+//
+// Correlation comes from the context, not from a bound field: the record is
+// written with the request's context, so a context-aware handler (the platform
+// facade on stdout, the OTel bridge on OTLP) stamps the trace and span ids
+// itself. Mount it after Tracing so the span exists, and mount Recovery after
+// it so a panicking request still gets its summary.
 //
 // extraSkipRoutes must match what was passed to Tracing. Both read
 // DefaultSkipRoutes, so the two skip lists agree by construction; the extras are
 // the only part a caller can get out of step.
-func Logging(logger *zap.Logger, extraSkipRoutes ...string) gin.HandlerFunc {
+func Logging(logger *slog.Logger, extraSkipRoutes ...string) gin.HandlerFunc {
+	if logger == nil {
+		logger = discard
+	}
 	skip := skipper(extraSkipRoutes...)
 
 	return func(c *gin.Context) {
-		start := time.Now()
-		path := c.Request.URL.Path
-		method := c.Request.Method
-		ctx := c.Request.Context()
-
-		// The span's trace id is the ONLY id that may reach telemetry. TraceID's
-		// generated fallback never consults the span, so logging it would let a
-		// record advertise an id that is not the trace id — searching by it finds
-		// nothing in the backend even when a trace exists. Probes have no span by
-		// design, so their records carry no trace_id.
-		spanTraceID := traceIDFromContext(ctx)
-
-		headerTraceID := spanTraceID
-		if headerTraceID == "" {
-			headerTraceID = TraceID(c)
-		}
-		c.Set(ctxKeyTraceID, headerTraceID)
-		c.Header(TraceIDHeader, headerTraceID)
-
-		// The request logger always carries the trace CONTEXT so the otelzap
-		// bridge stamps native trace_id/span_id on every OTLP record. The
-		// readable string field is bound only when a span exists.
-		fields := []zap.Field{traceContextField(ctx)}
-		if spanTraceID != "" {
-			fields = append(fields, zap.String("trace_id", spanTraceID))
-		}
-		reqLogger := logger.With(fields...)
-		c.Set(ctxKeyLogger, reqLogger)
+		c.Header(TraceIDHeader, TraceID(c))
+		c.Set(ctxKeyLogger, logger)
 
 		c.Next()
 
 		status := c.Writer.Status()
+		// A handler that wrote its status and then panicked keeps that
+		// status on the wire — Recovery cannot change it — so the mark, not
+		// the status, is what says the request failed.
+		panicked := c.GetBool(ctxKeyPanicked)
 
 		// Routine SUCCESSFUL probes are traffic about the platform, not the
 		// domain — Tracing excludes them from spans and RED metrics through this
 		// same skip list, and excluding them here is what makes that contract
 		// true for logs too. A FAILING probe is always kept: that is the one time
 		// a probe is worth reading.
-		if skip(c) && status < 400 {
+		if skip(c) && status < 400 && !panicked {
 			return
 		}
 
-		logByStatus(reqLogger, status, []zap.Field{
-			zap.String("method", method),
-			zap.String("path", bounded(path)),
-			zap.Int("status", status),
-			zap.Duration("duration", time.Since(start)),
-			zap.String("client_ip", bounded(c.ClientIP())),
-			zap.String("user_agent", bounded(c.Request.UserAgent())),
-		})
+		attrs := make([]slog.Attr, 0, 4)
+		attrs = append(attrs, slog.String("http.request.method", normalizeMethod(c.Request.Method)))
+		if route := c.FullPath(); route != "" {
+			attrs = append(attrs, slog.String("http.route", route))
+		}
+		attrs = append(attrs, slog.Int("http.response.status_code", status))
+		level := levelFor(status)
+		switch {
+		case panicked:
+			level = slog.LevelError
+			attrs = append(attrs, slog.String("error.type", "panic"))
+		case status >= 500:
+			// The semantic conventions name a server failure that carries no
+			// exception by its status code, as a string. The pinned otelgin puts
+			// no such value on the span — it marks the span Error and sets
+			// error.type only from gin's c.Errors — so this is the convention's
+			// value, not a copy of the span's.
+			attrs = append(attrs, slog.String("error.type", strconv.Itoa(status)))
+		}
+		logger.LogAttrs(c.Request.Context(), level, "HTTP request", attrs...)
 	}
 }
 
-// logByStatus emits one request log at the level the status class deserves:
-// Error for 5xx, Warn for 4xx, Info otherwise. One line per request, never a
-// duplicate Info+Error pair.
-func logByStatus(logger *zap.Logger, status int, fields []zap.Field) {
+// normalizeMethod maps a request method onto the semantic conventions' set: the
+// nine standard methods as they are, anything else "_OTHER". net/http accepts
+// any token as a method, of any length, so the raw value is a field a client
+// fills; the pinned otelgin applies the same rule on the span.
+func normalizeMethod(m string) string {
+	switch m {
+	case "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE", "PATCH":
+		return m
+	}
+	return "_OTHER"
+}
+
+// levelFor is the access-outcome severity: Error for a server failure, Warn for
+// a client error, Info otherwise. One record per request, never an Info and an
+// Error pair for the same call.
+func levelFor(status int) slog.Level {
 	switch {
 	case status >= 500:
-		logger.Error("HTTP request", fields...)
+		return slog.LevelError
 	case status >= 400:
-		logger.Warn("HTTP request", fields...)
+		return slog.LevelWarn
 	default:
-		logger.Info("HTTP request", fields...)
+		return slog.LevelInfo
 	}
 }
 
-// LoggerFrom returns the request-scoped logger Logging bound to the context,
-// already carrying trace context. It falls back to zap.NewNop rather than
-// building a logger: a missing entry means Logging was not mounted, and a silent
-// logger surfaces that faster than a second, uncorrelated one.
-func LoggerFrom(c *gin.Context) *zap.Logger {
-	if v, ok := c.Get(ctxKeyLogger); ok {
-		if l, ok := v.(*zap.Logger); ok {
-			return l
-		}
+// discard is the logger used when none was given, and the fallback LoggerFrom
+// returns when Logging was not mounted: silent, so a missing middleware shows up
+// as missing logs rather than as a second, uncorrelated stream.
+var discard = slog.New(slog.DiscardHandler)
+
+// LoggerFrom returns the logger Logging was given, bound to the request: a call
+// that carries no span of its own — a context-less logger.Info(msg) — is still
+// written with the request's span, so it keeps the trace and span ids. A call that passes a context with a span of its own
+// (a child span a handler started) keeps that one. Falls back to a silent
+// logger when Logging was not mounted.
+func LoggerFrom(c *gin.Context) *slog.Logger {
+	v, ok := c.Get(ctxKeyLogger)
+	if !ok {
+		return discard
 	}
-	return zap.NewNop()
+	l, ok := v.(*slog.Logger)
+	if !ok || l == nil {
+		return discard
+	}
+	return slog.New(requestBound{next: l.Handler(), req: c.Request.Context()})
 }
 
-// LoggerWithTraceID returns baseLogger bound to the request's correlation id.
-// Prefer LoggerFrom, which also carries the native trace context.
-func LoggerWithTraceID(c *gin.Context, baseLogger *zap.Logger) *zap.Logger {
-	v, ok := c.Get(ctxKeyTraceID)
-	if !ok {
-		return baseLogger
+// requestBound supplies the request span to a record whose own context has
+// none, keeping the rest of the caller's context.
+type requestBound struct {
+	next slog.Handler
+	req  context.Context
+}
+
+func (h requestBound) Enabled(ctx context.Context, l slog.Level) bool {
+	return h.next.Enabled(h.pick(ctx), l)
+}
+
+func (h requestBound) Handle(ctx context.Context, r slog.Record) error {
+	return h.next.Handle(h.pick(ctx), r)
+}
+
+func (h requestBound) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return requestBound{next: h.next.WithAttrs(attrs), req: h.req}
+}
+
+func (h requestBound) WithGroup(name string) slog.Handler {
+	return requestBound{next: h.next.WithGroup(name), req: h.req}
+}
+
+func (h requestBound) pick(ctx context.Context) context.Context {
+	if ctx == nil {
+		return h.req
 	}
-	id, ok := v.(string)
-	if !ok {
-		return baseLogger
+	if trace.SpanContextFromContext(ctx).IsValid() {
+		return ctx
 	}
-	return baseLogger.With(zap.String(ctxKeyTraceID, id))
+	return trace.ContextWithSpan(ctx, trace.SpanFromContext(h.req))
 }
