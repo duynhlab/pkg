@@ -1,6 +1,9 @@
 package slogx
 
 import (
+	"context"
+	"errors"
+	"log/slog"
 	"math/rand"
 	"regexp"
 	"strings"
@@ -62,5 +65,82 @@ func TestScanKV_NoAllocOnNoMatch(t *testing.T) {
 	}
 	if n := testing.AllocsPerRun(100, func() { _ = r.scan(in) }); n != 0 {
 		t.Errorf("scan of a benign string allocates %v times", n)
+	}
+}
+
+type failingSink struct{ err error }
+
+func (f failingSink) Enabled(context.Context, slog.Level) bool  { return true }
+func (f failingSink) Handle(context.Context, slog.Record) error { return f.err }
+func (f failingSink) WithAttrs([]slog.Attr) slog.Handler        { return f }
+func (f failingSink) WithGroup(string) slog.Handler             { return f }
+
+type countingSink struct{ n *int }
+
+func (c countingSink) Enabled(context.Context, slog.Level) bool  { return true }
+func (c countingSink) Handle(context.Context, slog.Record) error { *c.n++; return nil }
+func (c countingSink) WithAttrs([]slog.Attr) slog.Handler        { return c }
+func (c countingSink) WithGroup(string) slog.Handler             { return c }
+
+// A failing sink does not starve the others, and every failure is reported.
+func TestFanout_DeliversToAllAndJoinsErrors(t *testing.T) {
+	n := 0
+	e1, e2 := errors.New("otlp down"), errors.New("disk full")
+	f := fanout{failingSink{e1}, countingSink{&n}, failingSink{e2}}
+	err := f.WithAttrs([]slog.Attr{slog.String("k", "v")}).WithGroup("g").Handle(context.Background(), slog.Record{})
+	if n != 1 || !errors.Is(err, e1) || !errors.Is(err, e2) {
+		t.Errorf("n=%d err=%v", n, err)
+	}
+	if !f.Enabled(context.Background(), slog.LevelDebug) {
+		t.Error("fanout has no gate of its own")
+	}
+}
+
+type disabledSink struct{ n *int }
+
+func (d disabledSink) Enabled(context.Context, slog.Level) bool  { return false }
+func (d disabledSink) Handle(context.Context, slog.Record) error { *d.n++; return nil }
+func (d disabledSink) WithAttrs([]slog.Attr) slog.Handler        { return d }
+func (d disabledSink) WithGroup(string) slog.Handler             { return d }
+
+type panickingSink struct{}
+
+func (panickingSink) Enabled(context.Context, slog.Level) bool  { return true }
+func (panickingSink) Handle(context.Context, slog.Record) error { panic("provider exploded") }
+func (panickingSink) WithAttrs([]slog.Attr) slog.Handler        { return panickingSink{} }
+func (panickingSink) WithGroup(string) slog.Handler             { return panickingSink{} }
+
+// A sink that is switched off costs no record conversion, and a sink that
+// panics is reported rather than propagated — a log line must never take the
+// process down, and the sinks after it still get the record.
+func TestFanout_SkipsDisabledSinksAndContainsPanics(t *testing.T) {
+	disabled, delivered := 0, 0
+	f := fanout{disabledSink{&disabled}, panickingSink{}, countingSink{&delivered}}
+	err := f.Handle(context.Background(), slog.Record{Level: slog.LevelInfo})
+	if disabled != 0 {
+		t.Errorf("a sink whose Enabled is false must not be handed the record")
+	}
+	if delivered != 1 {
+		t.Errorf("sinks after a panicking one still receive it: %d", delivered)
+	}
+	if err == nil || !strings.Contains(err.Error(), "sink panicked") {
+		t.Errorf("the panic must be reported as an error: %v", err)
+	}
+}
+
+// The gate is enforced in Handle too, for SDKs that take the handler from
+// Slog() and call it without asking Enabled.
+func TestLevelHandler_HandleEnforcesTheGate(t *testing.T) {
+	n := 0
+	lv := &slog.LevelVar{}
+	lv.Set(slog.LevelError)
+	h := levelHandler{level: lv, next: countingSink{&n}}
+	_ = h.Handle(context.Background(), slog.Record{Level: slog.LevelDebug})
+	if n != 0 {
+		t.Errorf("a record below the level must not reach the sinks")
+	}
+	_ = h.Handle(context.Background(), slog.Record{Level: slog.LevelError})
+	if n != 1 {
+		t.Errorf("a record at the level must: %d", n)
 	}
 }

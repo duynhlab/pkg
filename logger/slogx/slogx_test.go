@@ -20,7 +20,7 @@ import (
 func newTestLogger(t *testing.T, level string) (*slogx.Logger, *bytes.Buffer) {
 	t.Helper()
 	buf := &bytes.Buffer{}
-	return slogx.New(slogx.Config{Level: level, Service: "test", Stdout: buf}), buf
+	return slogx.New(slogx.Config{Level: level, Stdout: buf}), buf
 }
 
 func lines(t *testing.T, buf *bytes.Buffer) []map[string]any {
