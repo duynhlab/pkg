@@ -19,6 +19,7 @@ func emitDenied(tp trace.TracerProvider) {
 			attribute.String("network.peer.address", "10.0.0.7"),
 			attribute.Int("network.peer.port", 51234),
 			attribute.String("user_agent.original", "curl/8.0"),
+			attribute.String("db.connection_string", "redis://cache:6379"),
 			attribute.String("http.route", "/x"),
 		))
 	span.AddEvent("hop", trace.WithAttributes(
