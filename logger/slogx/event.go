@@ -25,13 +25,25 @@ const (
 // digits and underscores in each segment, a letter first, at least two
 // segments, at most 64 bytes. Only Event may set the "event" attribute; a
 // plain Info with slog.String("event", …) is not a catalog event and the
-// registry lint will flag it.
+// registry lint will flag it. The one carve-out is temporalx, which owns the
+// two temporal.workflow.* names and writes the key directly so the module
+// does not depend on this facade; the lint must allowlist it.
 //
 // A name that fails the grammar is not silently dropped and not silently
 // emitted as an event: the record goes out at the requested level with
 // "event.invalid" set to the (bounded) name instead of "event", so a
 // misspelt catalog name shows up in the very stream an operator reads.
 func (l *Logger) Event(ctx context.Context, level slog.Level, name, msg string, attrs ...slog.Attr) {
+	l.event(ctx, 4, level, name, msg, attrs)
+}
+
+// event is Event with the runtime.Callers skip of its entry point: skip
+// Callers, logAt, event and the exported method, so the record names the
+// method's caller, never this package.
+func (l *Logger) event(ctx context.Context, skip int, level slog.Level, name, msg string, attrs []slog.Attr) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if !l.h.Enabled(ctx, level) {
 		return
 	}
@@ -47,7 +59,7 @@ func (l *Logger) Event(ctx context.Context, level slog.Level, name, msg string, 
 		}
 		out = append(out, a)
 	}
-	l.log(ctx, level, msg, out)
+	l.logAt(ctx, skip, level, msg, out)
 }
 
 // ValidEventName reports whether name satisfies the catalog grammar:

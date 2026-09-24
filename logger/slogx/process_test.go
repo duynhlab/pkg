@@ -2,6 +2,8 @@ package slogx_test
 
 import (
 	"context"
+	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/duynhlab/pkg/logger/slogx"
@@ -40,9 +42,34 @@ func TestProcessLifecycleEvents(t *testing.T) {
 			if r["event"] != tc.event || r["level"] != tc.level || r["component"] != tc.component {
 				t.Errorf("record = %v", r)
 			}
+			if caller, _ := r["caller"].(string); !strings.HasPrefix(caller, "slogx/process_test.go:") {
+				t.Errorf("caller = %q, want this test file, never the facade", caller)
+			}
 			if tc.outcome != "" && r["outcome"] != tc.outcome {
 				t.Errorf("outcome = %v, want %s", r["outcome"], tc.outcome)
 			}
 		})
+	}
+}
+
+// Event names its own caller too — the refactor that let the process helpers
+// share its body must not shift the frame.
+func TestProcessHelpers_CallerIsTheCallSite(t *testing.T) {
+	l, buf := newTestLogger(t, "info")
+	l.ProcessStarted(context.Background(), slogx.ComponentAPI)
+	l.ProcessStopped(context.Background(), slogx.ComponentAPI, slogx.OutcomeGraceful)
+	for _, r := range lines(t, buf) {
+		if caller, _ := r["caller"].(string); !strings.HasPrefix(caller, "slogx/process_test.go:") {
+			t.Errorf("caller = %q, want this test file (called directly, no closure)", caller)
+		}
+	}
+}
+
+func TestEvent_CallerIsTheCallSite(t *testing.T) {
+	l, buf := newTestLogger(t, "info")
+	l.Event(context.Background(), slog.LevelInfo, "order.created", "order created")
+	r := lines(t, buf)[0]
+	if caller, _ := r["caller"].(string); !strings.HasPrefix(caller, "slogx/process_test.go:") {
+		t.Errorf("caller = %q, want this test file", caller)
 	}
 }

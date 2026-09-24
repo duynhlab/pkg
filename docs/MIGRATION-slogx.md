@@ -123,7 +123,11 @@ Four catalog names are emitted by pkg, not written by hand at a call site:
 - `temporal.workflow.started` — written by the client interceptor `temporalx.WithLogger`
   installs, for every `ExecuteWorkflow` that sets `WorkflowExecutionErrorWhenAlreadyStarted`
   (without it a nil error does not prove a start). Nothing to call (temporalx v0.41.0).
-- `temporal.workflow.failed` — call `temporalx.WorkflowFailed(ctx, log.Slog(), type, status)`
+  Not emitted — by design, because the client cannot prove a start — for
+  `SignalWithStartWorkflow` and for `WorkflowIDConflictPolicy: USE_EXISTING`. A
+  service that starts its workflows only through SignalWithStart (checkout's
+  abandonment timer) therefore writes no started event.
+- `temporal.workflow.failed` — call `temporalx.WorkflowFailed(ctx, log.Slog(), type, status, slog.String("order.id", id))`
   where a dispatcher, reconciler or activity observes a run that ended failed, terminated
   or timed out. Never from workflow code: it is replayed.
 

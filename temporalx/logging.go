@@ -27,7 +27,8 @@ type DialOption func(*client.Options)
 // run once per attempt and log normally.
 //
 // The same logger writes temporal.workflow.started for every unambiguous
-// client start (see startEvents).
+// client start (see startEvents); pass WithLogger once, or each copy installs
+// its own interceptor and the event is written twice.
 //
 // Correlation: the SDK logs with context.Background(), and its tracing
 // interceptor attaches the ids as "TraceID"/"SpanID" attributes instead. The
