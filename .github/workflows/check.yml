@@ -4,10 +4,8 @@ on:
   pull_request:
     branches: [main]
 
-permissions:
-  contents: read
-  pull-requests: read # sonarqube.yml's job requests this; a reusable workflow can't exceed the caller's grant
-
+# Permissions are granted per job (least privilege; the workflow level is
+# empty on purpose). A reusable workflow cannot exceed its caller job's grant.
 jobs:
   # Multi-module gate through the shared go-check.yml: the Makefile fans
   # tidy/fmt/vet/lint/test out per module (so the reusable lint job, which
@@ -15,6 +13,9 @@ jobs:
   # pushed without tidy/fmt, and make coverage merges the per-module
   # profiles into the coverage.out artifact sonarqube.yml expects.
   go-check:
+    permissions:
+      contents: read
+      pull-requests: read
     uses: duynhlab/gha-workflows/.github/workflows/go-check.yml@5179402dc1ae410e8964c85926b830481df87360 # main # main
     with:
       command-test: 'make test TAGS=integration && git diff --exit-code && make coverage'
@@ -26,6 +27,8 @@ jobs:
   # Lints the .proto style and fails the PR on a backward-incompatible change.
   buf:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: bufbuild/buf-action@8c6a16e16f12ba20b6470afa9c2ba9b5ba8c97c3 # v1
@@ -43,6 +46,8 @@ jobs:
   # policies, and fails when the generated Go constants drifted from it.
   semconv:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: make semconv-check
@@ -50,6 +55,9 @@ jobs:
 
   sonar:
     needs: go-check
+    permissions:
+      contents: read
+      pull-requests: read # sonarqube.yml's job requests this
     uses: duynhlab/gha-workflows/.github/workflows/sonarqube.yml@5179402dc1ae410e8964c85926b830481df87360 # main # main
     with:
       project-key: 'duynhlab_pkg'
