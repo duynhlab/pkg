@@ -348,7 +348,7 @@ func SetupObservability(ctx context.Context, cfg Config, opts ...SetupOption) (*
 		tpOpts := []sdktrace.TracerProviderOption{
 			sdktrace.WithResource(res),
 			sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(rate))),
-			sdktrace.WithBatcher(exp),
+			sdktrace.WithBatcher(privacyExporter{SpanExporter: exp}),
 		}
 		if st.tracerFactory != nil {
 			ftp := st.tracerFactory(TracerProviderConfig{opts: tpOpts})
