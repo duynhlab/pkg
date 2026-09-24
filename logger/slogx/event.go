@@ -26,8 +26,10 @@ const (
 // segments, at most 64 bytes. Only Event may set the "event" attribute; a
 // plain Info with slog.String("event", …) is not a catalog event and the
 // registry lint will flag it. The one carve-out is temporalx, which owns the
-// two temporal.workflow.* names and writes the key directly so the module
-// does not depend on this facade; the lint must allowlist it.
+// two temporal.workflow.* names and carries events written from workflow code
+// (WorkflowEvent, through the SDK's replay-aware logger); it writes the key
+// directly so the module does not depend on this facade, and the lint must
+// allowlist it.
 //
 // A name that fails the grammar is not silently dropped and not silently
 // emitted as an event: the record goes out at the requested level with
