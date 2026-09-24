@@ -124,6 +124,8 @@ groups:
   unit: '{request}'
   stability: development
   brief: Notifications marked read, split by single vs bulk mark-all
+  attributes:
+  - ref: mode
 - id: metric.notification.send.duration
   type: metric
   metric_name: notification.send.duration
@@ -283,6 +285,8 @@ groups:
   unit: '{disagreement}'
   stability: development
   brief: Orders holding an inventory reservation while not recorded as inventory-path
+  attributes:
+  - ref: row_participant
 - id: metric.order.reconciler.passes.truncated.total
   type: metric
   metric_name: order.reconciler.passes.truncated.total
@@ -297,6 +301,8 @@ groups:
   unit: '{repair}'
   stability: development
   brief: Inventory reconciler actions by kind
+  attributes:
+  - ref: action
 - id: metric.order.saga.compensation.total
   type: metric
   metric_name: order.saga.compensation.total
@@ -348,6 +354,9 @@ groups:
   stability: development
   brief: Re-drives of an open UNKNOWN attempt, by operation and the class the provider answered with —
     `UNKNOWN` here means the doubt survived the round-trip
+  attributes:
+  - ref: operation
+  - ref: outcome_class
 - id: metric.payment.attempt.write_failures.total
   type: metric
   metric_name: payment.attempt.write_failures.total
@@ -426,6 +435,9 @@ groups:
   brief: Provider calls that returned no verdict, by operation and stage — stage=park is a NEW doubt (an
     intent enters processing), stage=resolve is a re-ask that ALSO answered nothing (existing doubt surviving).
     The first GameDay read 2 against one parked row because both round-trips counted indistinguishably
+  attributes:
+  - ref: operation
+  - ref: stage
 - id: metric.payment.reconciliation.discrepancies.total
   type: metric
   metric_name: payment.reconciliation.discrepancies.total
@@ -433,6 +445,8 @@ groups:
   unit: '{discrepancy}'
   stability: development
   brief: Ledger-vs-provider discrepancies found per reconciliation run, by class
+  attributes:
+  - ref: class
 - id: metric.payment.reconciliation.heal_failures.total
   type: metric
   metric_name: payment.reconciliation.heal_failures.total
@@ -441,6 +455,8 @@ groups:
   stability: development
   brief: Heal attempts that errored, by discrepancy class — previously only logged, so a heal that never
     worked was invisible
+  attributes:
+  - ref: class
 - id: metric.payment.reconciliation.run.duration
   type: metric
   metric_name: payment.reconciliation.run.duration

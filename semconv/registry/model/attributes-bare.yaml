@@ -26,11 +26,11 @@ groups:
     examples:
     - example
   - id: age
-    type: string
+    type: int
     stability: development
     brief: Age on log, written by order.
     examples:
-    - example
+    - 1
   - id: attempt
     type: int
     stability: development
@@ -38,11 +38,11 @@ groups:
     examples:
     - 1
   - id: attempts
-    type: string
+    type: int
     stability: development
     brief: How many attempts a bounded retry made before giving up.
     examples:
-    - example
+    - 1
   - id: audience
     type: string
     stability: development
@@ -50,17 +50,17 @@ groups:
     examples:
     - example
   - id: batch
-    type: string
+    type: int
     stability: development
     brief: Batch on log, written by order.
     examples:
-    - example
+    - 1
   - id: batch_size
-    type: string
+    type: int
     stability: development
     brief: Batch size on log, written by order.
     examples:
-    - example
+    - 1
   - id: bound_charge
     type: string
     stability: development
@@ -86,11 +86,11 @@ groups:
     examples:
     - example
   - id: candidates
-    type: string
+    type: int
     stability: development
     brief: Candidates on log, written by order.
     examples:
-    - example
+    - 1
   - id: captured
     type: boolean
     stability: development
@@ -140,11 +140,11 @@ groups:
     examples:
     - true
   - id: created_at
-    type: string
+    type: int
     stability: development
     brief: Created at on log, written by payment.
     examples:
-    - example
+    - 1
   - id: currency
     type: string
     stability: development
@@ -158,12 +158,12 @@ groups:
     examples:
     - example
   - id: delay
-    type: string
+    type: int
     stability: development
     brief: Delay on log, written by cart, checkout, inventory, notification, order, payment, product,
       review, shipping, user.
     examples:
-    - example
+    - 1
   - id: duplicate
     type: boolean
     stability: development
@@ -190,11 +190,11 @@ groups:
     examples:
     - example
   - id: examined
-    type: string
+    type: int
     stability: development
     brief: Examined on log, written by order.
     examples:
-    - example
+    - 1
   - id: found
     type: boolean
     stability: development
@@ -202,23 +202,23 @@ groups:
     examples:
     - true
   - id: from
-    type: string
+    type: int
     stability: development
     brief: From on log, written by payment.
     examples:
-    - example
+    - 1
   - id: has_payment
-    type: string
+    type: boolean
     stability: development
     brief: Has payment on log, written by order.
     examples:
-    - example
+    - true
   - id: has_shipment
-    type: string
+    type: boolean
     stability: development
     brief: Has shipment on log, written by order.
     examples:
-    - example
+    - true
   - id: hostport
     type: string
     stability: development
@@ -232,11 +232,11 @@ groups:
     examples:
     - example
   - id: interval
-    type: string
+    type: int
     stability: development
     brief: Interval on log, written by order.
     examples:
-    - example
+    - 1
   - id: inventory_grpc_addr
     type: string
     stability: development
@@ -262,17 +262,17 @@ groups:
     examples:
     - example
   - id: limit
-    type: string
+    type: int
     stability: development
     brief: Limit on log, written by review.
     examples:
-    - example
+    - 1
   - id: max_confirm_write
-    type: string
+    type: int
     stability: development
     brief: Max confirm write on log, written by checkout.
     examples:
-    - example
+    - 1
   - id: mode
     type: string
     stability: development
@@ -310,19 +310,19 @@ groups:
     examples:
     - example
   - id: otlp_logs
-    type: string
+    type: boolean
     stability: development
     brief: Otlp logs on log, written by cart, checkout, inventory, notification, order, payment, product,
       review, shipping, user.
     examples:
-    - example
+    - true
   - id: otlp_metrics
-    type: string
+    type: boolean
     stability: development
     brief: Otlp metrics on log, written by cart, checkout, inventory, notification, order, payment, product,
       review, shipping, user.
     examples:
-    - example
+    - true
   - id: outbox_id
     type: int
     stability: development
@@ -348,11 +348,11 @@ groups:
     examples:
     - example
   - id: poll_interval
-    type: string
+    type: int
     stability: development
     brief: Poll interval on log, written by order.
     examples:
-    - example
+    - 1
   - id: poller_type
     type: string
     stability: development
@@ -373,17 +373,17 @@ groups:
     examples:
     - example
   - id: redial_interval
-    type: string
+    type: int
     stability: development
     brief: Redial interval on log, written by checkout, order.
     examples:
-    - example
+    - 1
   - id: replayed
-    type: string
+    type: boolean
     stability: development
     brief: Replayed on log, written by payment.
     examples:
-    - example
+    - true
   - id: requested_charge
     type: string
     stability: development
@@ -439,11 +439,11 @@ groups:
     examples:
     - example
   - id: rows
-    type: string
+    type: int
     stability: development
     brief: Rows on log, written by checkout.
     examples:
-    - example
+    - 1
   - id: run_status
     type: string
     stability: development
@@ -451,12 +451,12 @@ groups:
     examples:
     - example
   - id: sample_rate
-    type: string
+    type: double
     stability: development
     brief: Sample rate on log, written by cart, checkout, inventory, notification, order, payment, product,
       review, shipping, user.
     examples:
-    - example
+    - 1.5
   - id: source
     type: string
     stability: development
@@ -488,11 +488,11 @@ groups:
     examples:
     - example
   - id: takeover
-    type: string
+    type: int
     stability: development
     brief: Takeover on log, written by checkout.
     examples:
-    - example
+    - 1
   - id: target
     type: string
     stability: development
@@ -506,49 +506,49 @@ groups:
     examples:
     - example
   - id: through
-    type: string
+    type: int
     stability: development
     brief: Through on log, written by payment.
     examples:
-    - example
+    - 1
   - id: timeout
-    type: string
+    type: int
     stability: development
     brief: Timeout on log, written by cart, inventory, notification, order, payment, product, review,
       shipping, user.
     examples:
-    - example
+    - 1
   - id: total
-    type: string
+    type: int
     stability: development
     brief: Total on log, written by product.
     examples:
-    - example
+    - 1
   - id: traces
-    type: string
+    type: boolean
     stability: development
     brief: Traces on log, written by cart, checkout, inventory, notification, order, payment, product,
       review, shipping, user.
     examples:
-    - example
+    - true
   - id: ttl_detail
-    type: string
+    type: int
     stability: development
     brief: Ttl detail on log, written by product.
     examples:
-    - example
+    - 1
   - id: ttl_list
-    type: string
+    type: int
     stability: development
     brief: Ttl list on log, written by product.
     examples:
-    - example
+    - 1
   - id: violations
-    type: string
+    type: int
     stability: development
     brief: Violations on log, written by payment.
     examples:
-    - example
+    - 1
   - id: weight
     type: double
     stability: development
@@ -556,11 +556,11 @@ groups:
     examples:
     - 1.5
   - id: window
-    type: string
+    type: int
     stability: development
     brief: Window on log, written by order.
     examples:
-    - example
+    - 1
   - id: worker_type
     type: string
     stability: development

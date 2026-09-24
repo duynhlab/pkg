@@ -8,7 +8,7 @@ the shared package and checked against live telemetry (ADR-076).
 |---|---|
 | **Registry** | `registry/` — `manifest.yaml` (depends on semantic conventions **v1.41.0**, the version `obsx` pins) + `model/*.yaml` |
 | **Policies** | `policies/registry.rego` — registered namespaces, no upstream redefinition, a UCUM unit on every metric, stability on every definition |
-| **Templates** | `templates/registry/go/` — the constants `logger/slogx` and `temporalx` import (`*/semconv_gen.go`, generated, never edited) |
+| **Templates** | `templates/registry/go/` — the constants `logger/slogx` and `temporalx` import (`*/semconv_gen.go`); `templates/registry/markdown/` — the event catalog table (`docs/event-catalog.md`) homelab's `docs/api/logs.md` embeds. Generated, never edited |
 | **Tooling** | `otel/weaver:v0.26.1` through `make semconv-*` (docker, no install) |
 | **Live check** | homelab `local-stack/compose.weaver.yaml` copies the gate's OTLP to `weaver registry live-check` against this registry |
 
@@ -26,7 +26,9 @@ semconv/
       metrics.yaml         the business instruments, unit = what the code passes to WithUnit
       metrics-vendor.yaml  instruments libraries emit under their own names (Temporal SDK, pgxpool)
   policies/registry.rego
-  templates/registry/go/
+  templates/registry/go/          slogx.go.j2, temporalx.go.j2 → */semconv_gen.go
+  templates/registry/markdown/    event-catalog.md.j2 → docs/event-catalog.md
+  docs/event-catalog.md           generated
 ```
 
 The registry root is `registry/`, not this directory: Weaver reads every YAML under
@@ -54,6 +56,7 @@ make semconv-check            # resolve + policies (CI)
 make semconv-generate         # regenerate logger/slogx/semconv_gen.go and temporalx/semconv_gen.go
 make semconv-generated-check  # fail when a generated file is stale or hand-edited (CI)
 make semconv-diff BASE=main   # renames/removals vs the registry at a git ref (ADR-072: a breaking release)
+make semconv-lockstep         # the registry's upstream version equals the semconv version obsx imports (CI)
 ```
 
 Deprecated upstream keys and unit or instrument mismatches are **violations** in

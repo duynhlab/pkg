@@ -50,6 +50,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: make semconv-lockstep
       - run: make semconv-check
       - run: make semconv-generated-check
 

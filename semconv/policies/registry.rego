@@ -21,6 +21,8 @@ platform_namespaces := {
 	"session",                                                               # checkout
 	# shared package and platform
 	"temporal", "platform", "api", "pgx", "pyroscope",
+	# review-service names its gRPC truncation counter under grpc.*
+	"grpc",
 }
 
 # Namespaces the pinned upstream conventions own: reused by ref, never redefined.
@@ -77,4 +79,27 @@ deny contains finding if {
 	attr.id
 	not attr.stability
 	finding := {"id": "attribute_without_stability", "type": "semconv_attribute", "category": "stability", "group": g.id, "attr": attr.id}
+}
+
+# Metric and event names live in namespaces too. A business instrument must
+# start with a registered namespace; a library's instrument (origin: vendor)
+# keeps its own name. The two process.* lifecycle events are the one deliberate
+# use of an upstream namespace: the catalog froze them (ADR-071) and they name
+# the process, which is what that namespace is for.
+deny contains finding if {
+	some g in input.groups
+	g.type == "metric"
+	not vendor(g)
+	ns := first_segment(g.metric_name)
+	not platform_namespaces[ns]
+	finding := {"id": "unregistered_metric_namespace", "type": "semconv_attribute", "category": "namespace", "group": g.id, "attr": g.metric_name}
+}
+
+deny contains finding if {
+	some g in input.groups
+	g.type == "event"
+	ns := first_segment(g.name)
+	not platform_namespaces[ns]
+	ns != "process"
+	finding := {"id": "unregistered_event_namespace", "type": "semconv_attribute", "category": "namespace", "group": g.id, "attr": g.name}
 }

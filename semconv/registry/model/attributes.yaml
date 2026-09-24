@@ -1,5 +1,5 @@
 # Platform-owned attributes, one group per namespace. Every first segment
-# here is on the registered-namespace list (policies/namespaces.rego).
+# here is on the registered-namespace list (policies/registry.rego).
 groups:
 - id: registry.api
   type: attribute_group
@@ -35,29 +35,29 @@ groups:
   brief: Platform attributes in the `cache` namespace.
   attributes:
   - id: cache.error
-    type: string
+    type: boolean
     stability: development
     brief: The error of cache on log, written by product.
     examples:
-    - example
+    - true
   - id: cache.hit
-    type: string
+    type: boolean
     stability: development
     brief: The hit of cache on log, written by product.
     examples:
-    - example
+    - true
   - id: cache.invalidation_error
-    type: string
+    type: boolean
     stability: development
     brief: The invalidation error of cache on log, written by product.
     examples:
-    - example
+    - true
   - id: cache.write_error
-    type: string
+    type: boolean
     stability: development
     brief: The write error of cache on log, written by product.
     examples:
-    - example
+    - true
 - id: registry.cart
   type: attribute_group
   display_name: cart attributes
@@ -70,11 +70,11 @@ groups:
     examples:
     - true
   - id: cart.count
-    type: string
+    type: int
     stability: development
     brief: The count of cart on log, written by cart.
     examples:
-    - example
+    - 1
 - id: registry.checkout
   type: attribute_group
   display_name: checkout attributes
@@ -87,11 +87,11 @@ groups:
     examples:
     - example
   - id: checkout.unknown_sku_ids
-    type: string
+    type: string[]
     stability: development
     brief: The unknown sku ids of checkout on log, written by checkout.
     examples:
-    - example
+    - - example
 - id: registry.compensation
   type: attribute_group
   display_name: compensation attributes
@@ -171,11 +171,11 @@ groups:
   brief: Platform attributes in the `inventory` namespace.
   attributes:
   - id: inventory.fetch_error
-    type: string
+    type: boolean
     stability: development
     brief: The fetch error of inventory on log, written by order.
     examples:
-    - example
+    - true
   - id: inventory.reservation.ref
     type: string
     stability: development
@@ -211,17 +211,17 @@ groups:
     examples:
     - example
   - id: item.removed
-    type: string
+    type: boolean
     stability: development
     brief: The removed of item on log, written by cart.
     examples:
-    - example
+    - true
   - id: item.updated
-    type: string
+    type: boolean
     stability: development
     brief: The updated of item on log, written by cart.
     examples:
-    - example
+    - true
 - id: registry.items
   type: attribute_group
   display_name: items attributes
@@ -245,11 +245,11 @@ groups:
   brief: Platform attributes in the `notification` namespace.
   attributes:
   - id: notification.found
-    type: string
+    type: boolean
     stability: development
     brief: The found of notification on log, written by notification.
     examples:
-    - example
+    - true
   - id: notification.id
     type: string
     stability: development
@@ -279,11 +279,11 @@ groups:
     examples:
     - true
   - id: order.epoch
-    type: string
+    type: int
     stability: development
     brief: The cancellation epoch of an order.
     examples:
-    - example
+    - 1
   - id: order.found
     type: boolean
     stability: development
@@ -297,22 +297,22 @@ groups:
     examples:
     - example
   - id: order.replayed
-    type: string
+    type: boolean
     stability: development
     brief: The replayed of order on log, written by order.
     examples:
-    - example
+    - true
 - id: registry.order_id
   type: attribute_group
   display_name: order_id attributes
   brief: Platform attributes in the `order_id` namespace.
   attributes:
   - id: order_id.valid
-    type: string
+    type: boolean
     stability: development
     brief: The valid of order id on log, written by shipping.
     examples:
-    - example
+    - true
 - id: registry.orders
   type: attribute_group
   display_name: orders attributes
@@ -330,11 +330,11 @@ groups:
   brief: Platform attributes in the `payment` namespace.
   attributes:
   - id: payment.fetch_error
-    type: string
+    type: boolean
     stability: development
     brief: The fetch error of payment on log, written by order.
     examples:
-    - example
+    - true
   - id: payment.found
     type: boolean
     stability: development
@@ -348,11 +348,11 @@ groups:
     examples:
     - example
   - id: payment.idempotency_key_id
-    type: string
+    type: int
     stability: development
     brief: The idempotency key id of payment on log, written by payment.
     examples:
-    - example
+    - 1
   - id: payment.operation
     type: string
     stability: development
@@ -394,22 +394,22 @@ groups:
   brief: Platform attributes in the `processing` namespace.
   attributes:
   - id: processing.fetch_error
-    type: string
+    type: boolean
     stability: development
     brief: The fetch error of processing on log, written by order.
     examples:
-    - example
+    - true
 - id: registry.product
   type: attribute_group
   display_name: product attributes
   brief: Platform attributes in the `product` namespace.
   attributes:
   - id: product.created
-    type: string
+    type: boolean
     stability: development
     brief: The created of product on log, written by product.
     examples:
-    - example
+    - true
   - id: product.found
     type: boolean
     stability: development
@@ -434,11 +434,11 @@ groups:
   brief: Platform attributes in the `products` namespace.
   attributes:
   - id: products.count
-    type: string
+    type: int
     stability: development
     brief: The count of products on log, written by product.
     examples:
-    - example
+    - 1
   - id: products.found
     type: int
     stability: development
@@ -452,11 +452,11 @@ groups:
     examples:
     - 1
   - id: products.total
-    type: string
+    type: int
     stability: development
     brief: The total of products on log, written by product.
     examples:
-    - example
+    - 1
 - id: registry.profile
   type: attribute_group
   display_name: profile attributes
@@ -469,11 +469,11 @@ groups:
     examples:
     - true
   - id: profile.updated
-    type: string
+    type: boolean
     stability: development
     brief: The updated of profile on log, written by user.
     examples:
-    - example
+    - true
 - id: registry.pyroscope
   type: attribute_group
   display_name: pyroscope attributes
@@ -553,22 +553,22 @@ groups:
   brief: Platform attributes in the `result` namespace.
   attributes:
   - id: result.count
-    type: string
+    type: int
     stability: development
     brief: The count of result on log, written by notification.
     examples:
-    - example
+    - 1
 - id: registry.review
   type: attribute_group
   display_name: review attributes
   brief: Platform attributes in the `review` namespace.
   attributes:
   - id: review.created
-    type: string
+    type: boolean
     stability: development
     brief: The created of review on log, written by review.
     examples:
-    - example
+    - true
   - id: review.id
     type: string
     stability: development
@@ -621,11 +621,11 @@ groups:
   brief: Platform attributes in the `session` namespace.
   attributes:
   - id: session.reused
-    type: string
+    type: boolean
     stability: development
     brief: The reused of session on log, written by checkout.
     examples:
-    - example
+    - true
 - id: registry.shipment
   type: attribute_group
   display_name: shipment attributes
@@ -638,11 +638,11 @@ groups:
     examples:
     - example
   - id: shipment.fetch_error
-    type: string
+    type: boolean
     stability: development
     brief: The fetch error of shipment on log, written by order.
     examples:
-    - example
+    - true
   - id: shipment.found
     type: boolean
     stability: development
@@ -673,11 +673,11 @@ groups:
   brief: Platform attributes in the `sms` namespace.
   attributes:
   - id: sms.sent
-    type: string
+    type: boolean
     stability: development
     brief: The sent of sms on log, written by notification.
     examples:
-    - example
+    - true
 - id: registry.temporal
   type: attribute_group
   display_name: temporal attributes
@@ -724,11 +724,11 @@ groups:
   brief: Platform attributes in the `user` namespace.
   attributes:
   - id: user.found
-    type: string
+    type: boolean
     stability: development
     brief: The found of user on log, written by user.
     examples:
-    - example
+    - true
 - id: registry.webhook
   type: attribute_group
   display_name: webhook attributes

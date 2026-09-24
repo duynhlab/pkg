@@ -27,7 +27,7 @@ GO_TEST_ARGS ?= -race
 # 1-indexed. `make test-chunk CHUNK=2/4` runs the second quarter.
 CHUNK ?= 1/1
 
-.PHONY: all modules build tidy fmt vet lint test test-chunk coverage generate-proto proto-breaking semconv-check semconv-generate semconv-generated-check semconv-diff
+.PHONY: all modules build tidy fmt vet lint test test-chunk coverage generate-proto proto-breaking semconv-check semconv-generate semconv-generated-check semconv-diff semconv-lockstep
 
 # ---------------------------------------------------------------------------
 # Platform semantic-convention registry (semconv/, ADR-076). Weaver runs from
@@ -42,15 +42,22 @@ semconv-check: ## Resolve the registry against upstream v1.41.0 and run the Rego
 semconv-generate: ## Regenerate the Go constants the modules import and the docs table from the registry
 	$(WEAVER) registry generate -r semconv/registry -t semconv/templates go .
 	$(WEAVER) registry generate -r semconv/registry -t semconv/templates markdown .
-	gofmt -l logger/slogx/semconv_gen.go temporalx/semconv_gen.go
+	test -z "$$(gofmt -l logger/slogx/semconv_gen.go temporalx/semconv_gen.go)"
 
 semconv-generated-check: semconv-generate ## Fail when a generated file was hand-edited or is stale
 	git diff --exit-code -- logger/slogx/semconv_gen.go temporalx/semconv_gen.go semconv/docs/event-catalog.md
 
-semconv-diff: ## Report renames/removals against the registry at BASE (a git ref), e.g. make semconv-diff BASE=main
-	rm -rf .semconv-base && mkdir -p .semconv-base && git archive $(BASE) semconv/registry | tar -x -C .semconv-base
-	$(WEAVER) registry diff -r semconv/registry --baseline-registry .semconv-base/semconv/registry
-	rm -rf .semconv-base
+semconv-diff: ## Report renames/removals against the registry at BASE (a git ref that has semconv/), e.g. make semconv-diff BASE=main
+	rm -rf .semconv-base && mkdir -p .semconv-base \
+	  && git archive $(BASE) semconv/registry | tar -x -C .semconv-base \
+	  && $(WEAVER) registry diff -r semconv/registry --baseline-registry .semconv-base/semconv/registry; \
+	  status=$$?; rm -rf .semconv-base; exit $$status
+
+semconv-lockstep: ## ADR-076 version lockstep: the registry's upstream version equals the semconv version obsx imports
+	@reg=$$(grep -oE 'tags/v[0-9]+\.[0-9]+\.[0-9]+' semconv/registry/manifest.yaml | grep -oE 'v[0-9.]+'); \
+	  code=$$(grep -rhoE 'go.opentelemetry.io/otel/semconv/v[0-9.]+' obsx/*.go | grep -oE 'v[0-9.]+' | sort -u); \
+	  echo "registry upstream $$reg / obsx semconv $$code"; \
+	  [ "$$reg" = "$$code" ] || { echo 'semconv-lockstep FAIL: bump both in one change (ADR-076)'; exit 1; }
 
 all: ## Run tidy, fmt, vet and lint for all modules
 	$(MAKE) $(addprefix all-,$(MODULES))
