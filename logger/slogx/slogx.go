@@ -179,8 +179,15 @@ func (l *Logger) Slog() *slog.Logger {
 
 // log builds the record with the CALLER's source location. slog.Logger's own
 // methods would attribute every line to this file, so the record is built by
-// hand: skip runtime.Callers, log, and the exported method that called it.
+// hand: skip runtime.Callers, logAt, log, and the exported method that called
+// it.
 func (l *Logger) log(ctx context.Context, level slog.Level, msg string, attrs []slog.Attr) {
+	l.logAt(ctx, 4, level, msg, attrs)
+}
+
+// logAt is log with an explicit runtime.Callers skip, for entry points that
+// reach it through one more frame (Event and the process helpers).
+func (l *Logger) logAt(ctx context.Context, skip int, level slog.Level, msg string, attrs []slog.Attr) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -188,7 +195,7 @@ func (l *Logger) log(ctx context.Context, level slog.Level, msg string, attrs []
 		return
 	}
 	var pcs [1]uintptr
-	runtime.Callers(3, pcs[:])
+	runtime.Callers(skip, pcs[:])
 	r := slog.NewRecord(time.Now(), level, msg, pcs[0])
 	r.AddAttrs(attrs...)
 	// A write error on stdout has nowhere better to go than stdout; zap made
