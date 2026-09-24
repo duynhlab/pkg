@@ -26,6 +26,9 @@ type DialOption func(*client.Options)
 // must never call the facade directly — that bypasses the wrapper. Activities
 // run once per attempt and log normally.
 //
+// The same logger writes temporal.workflow.started for every unambiguous
+// client start (see startEvents).
+//
 // Correlation: the SDK logs with context.Background(), and its tracing
 // interceptor attaches the ids as "TraceID"/"SpanID" attributes instead. The
 // logger is wrapped so those attributes become the record's span context —
@@ -42,6 +45,7 @@ func WithLogger(l *slog.Logger) DialOption {
 	}
 	return func(o *client.Options) {
 		o.Logger = sdklog.NewStructuredLogger(slog.New(spanFromAttrs{next: l.Handler()}))
+		o.Interceptors = append(o.Interceptors, &startEvents{log: l})
 	}
 }
 

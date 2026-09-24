@@ -112,6 +112,21 @@ What changes for readers of the access records:
   become the record's span context, so workflow and activity lines carry the
   canonical `trace_id`/`span_id` instead of a second pair of fields.
 
+## Lifecycle events the shared modules own
+
+Four catalog names are emitted by pkg, not written by hand at a call site:
+
+- `process.started` / `process.stopped` — call `log.ProcessStarted(ctx, slogx.ComponentAPI)`
+  once the entry point serves, and `log.ProcessStopped(ctx, slogx.ComponentAPI, slogx.OutcomeGraceful)`
+  (or `OutcomeError`) after shutdown finishes, before `obs.Shutdown`. Components are
+  `api`, `worker` and `mockpay` (slogx v0.2.0).
+- `temporal.workflow.started` — written by the client interceptor `temporalx.WithLogger`
+  installs, for every `ExecuteWorkflow` that sets `WorkflowExecutionErrorWhenAlreadyStarted`
+  (without it a nil error does not prove a start). Nothing to call (temporalx v0.41.0).
+- `temporal.workflow.failed` — call `temporalx.WorkflowFailed(ctx, log.Slog(), type, status)`
+  where a dispatcher, reconciler or activity observes a run that ended failed, terminated
+  or timed out. Never from workflow code: it is replayed.
+
 ## Call sites
 
 `gofmt -r` rewrites the mechanical half; the context argument is the part a
