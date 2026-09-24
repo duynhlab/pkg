@@ -3,7 +3,7 @@
 # root checks nothing — always go through these targets.
 #
 # Module paths encode "/" as ":" in target names, because "/" is not usable in
-# a make target: logger/zapx is addressed as `make test-logger:zapx`.
+# a make target: logger/slogx is addressed as `make test-logger:slogx`.
 
 # Discover modules by their go.mod files. Nested deeper than -maxdepth 4 a
 # module silently disappears from every target — run `make modules` after

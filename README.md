@@ -14,15 +14,15 @@ module below has its own `go.mod` and is versioned and tagged independently
 
 ```bash
 go get github.com/duynhlab/pkg/httpx@v0.36.0        # tag: httpx/v0.36.0
-go get github.com/duynhlab/pkg/logger/zapx@v0.36.0  # tag: logger/zapx/v0.36.0
+go get github.com/duynhlab/pkg/logger/slogx@v0.2.0 # tag: logger/slogx/v0.2.0
 ```
 
 Module tags continue the pre-split numbering (the last single-module tag was
 `v0.35.0`); a module first published after the split starts its own history at
 `v0.1.0` (`httpmw`, `logger/slogx`). Migrating a service from the single-module `pkg`? See
 [docs/MIGRATION.md](docs/MIGRATION.md) — import paths don't change, only
-`go.mod` does. Moving a service's logging from `logger/zapx` to the facade?
-See [docs/MIGRATION-slogx.md](docs/MIGRATION-slogx.md).
+`go.mod` does. How the fleet moved its logging from `logger/zapx` to the
+facade: [docs/MIGRATION-slogx.md](docs/MIGRATION-slogx.md).
 
 ## Modules
 
@@ -33,9 +33,6 @@ Modules are layered; lower layers never import higher ones (see
 |--------|-------|------------------|
 | [`proto`](./proto) | 0 | Versioned gRPC contracts for all services (`<svc>/v1/*.proto`) with **committed** generated stubs. |
 | [`logger/slogx`](./logger/slogx) | 0 | **The application logging facade** (RFC-0031 / ADR-070): one context-first `log/slog` API, the platform JSON envelope on stdout and OTLP from one redacted record, a mandatory privacy boundary and `Event` for catalog records. |
-| [`logger/zapx`](./logger/zapx) | 0 | zap logger construction with trace-ID injection — the production default until services adopt `logger/slogx`; its OTLP tee (`obsx.ZapCore`) left obsx in v0.45.0, so it pairs only with obsx ≤ v0.44. |
-| [`logger/clog`](./logger/clog) | 0 | `log/slog` + chainguard-dev/clog logger with trace-context correlation. |
-| [`logger/zerolog`](./logger/zerolog) | 0 | rs/zerolog logger with trace-ID injection. |
 | [`flagx`](./flagx) | 0 | Startup-validated environment flags (`Enum`, `Percent` + `Must*`) — fail fast, bounded values safe for metric labels. |
 | [`httpx`](./httpx) | 1 | HTTP helpers on gin: consistent error responses and pagination. |
 | [`grpcx`](./grpcx) | 1 | gRPC server/client for east-west calls: otelgrpc, health, reflection, panic recovery, access logs, error reasons. |
@@ -45,6 +42,11 @@ Modules are layered; lower layers never import higher ones (see
 | [`dbx`](./dbx) | 2 | Postgres `pgxpool` builder with otelpgx tracing and pool metrics, pooler-safe settings, no PII in telemetry. |
 | [`migratex`](./migratex) | 2 | Embedded SQL migrations runner (golang-migrate). |
 | [`temporalx`](./temporalx) | 2 | Temporal client/worker bootstrap with OTel tracing and Worker Deployment Versioning. |
+
+**Retired:** `logger/zapx` (last tag `v0.36.1`), `logger/zerolog` and
+`logger/clog` (last tag `v0.36.2` each) left the tree once every service had
+moved to `logger/slogx`. Their published tags still resolve through the module
+proxy; nothing new is released from them.
 
 Authoritative per-module detail and contribution rules live in
 [AGENTS.md](AGENTS.md).
@@ -91,7 +93,7 @@ root checks nothing, because there is no root module:
 ```bash
 make modules                  # list discovered modules
 make test                     # tidy+fmt+vet+lint+test for every module
-make test-obsx                # one module ("/" becomes ":" — make test-logger:zapx)
+make test-obsx                # one module ("/" becomes ":" — make test-logger:slogx)
 make test TAGS=integration    # include testcontainers tests (needs Docker)
 make generate-proto           # buf generate + buf lint after editing a .proto
 make release-obsx VER=0.36.0  # tag and push obsx/v0.36.0
@@ -126,9 +128,6 @@ of `/`. `VER` carries no `v` prefix. Releasing everything at once:
 # Layer 0
 make release-proto          VER=0.36.0
 make release-flagx          VER=0.36.0
-make release-logger:zapx    VER=0.36.0
-make release-logger:zerolog VER=0.36.0
-make release-logger:clog    VER=0.36.0
 
 # Layer 1
 make release-httpx          VER=0.36.0
@@ -152,11 +151,11 @@ notes.
 **Step 2 — verify:**
 
 ```bash
-git tag --sort=-creatordate | head -13
+git tag --sort=-creatordate | head -12
 
 # The proxy must resolve the new versions (spot-check a few):
 GOPROXY=https://proxy.golang.org go list -m github.com/duynhlab/pkg/httpx@v0.36.0
-GOPROXY=https://proxy.golang.org go list -m github.com/duynhlab/pkg/logger/zapx@v0.36.0
+GOPROXY=https://proxy.golang.org go list -m github.com/duynhlab/pkg/logger/slogx@v0.2.0
 GOPROXY=https://proxy.golang.org go list -m github.com/duynhlab/pkg/obsx@v0.36.0
 ```
 
