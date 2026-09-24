@@ -83,8 +83,8 @@ All ten need the floor: `dbx`, `httpx`, `logger/zapx`, `migratex`, `obsx`.
 | order | authmw, grpcx, proto, temporalx, flagx | **10** | 1.26.2 | go.mod:6 | yes |
 | checkout | authmw, grpcx, proto, idempotency, temporalx | **10** | 1.26.1 | go.mod:6 | none |
 
-Never add `logger/zerolog` or `logger/clog` — zero services import them
-(`go mod tidy` would strip them, but don't create the churn).
+Never add `logger/zerolog` or `logger/clog` — zero services imported them,
+and both have since left the tree.
 
 ## Migration steps (per service, one PR)
 
@@ -235,6 +235,9 @@ Canary with the smallest surface, finish with the saga services:
 - **`logger/zapx` and `obsx` version together.** Every service's
   `middleware/logging.go` + `main.go` pair `zapx.New` with `obs.ZapCore`;
   when bumping one later, bump the other to the tag cut from the same main.
+  (Historical: `obsx.ZapCore` ended at obsx v0.44 and `logger/zapx` left the
+  tree after the fleet moved to `logger/slogx` — see
+  [MIGRATION-slogx.md](MIGRATION-slogx.md).)
 - **`dbx` and `idempotency` share pgx** (checkout, payment): keep them on
   tags with the same pgx major version.
 - **The `Test (stable)` CI job runs on Go `stable`,** ignoring go.mod — if

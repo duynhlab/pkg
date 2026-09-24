@@ -30,17 +30,16 @@ Before submitting code, review your changes for the following:
 
 ## Project overview
 
-`duynhlab/pkg` is the shared Go SDK for the platform's microservices (`auth`, `user`, `product`, `cart`, `order`, `review`, `shipping`, `notification`, `payment`, `checkout` — all built as `web → logic → core` layered services). It is a **multi-module monorepo** — there is no top-level `go.mod`; all code lives in the 15 per-directory modules, each independently versioned and tagged (e.g. `httpx/v0.36.0`, `obsx/v0.36.0`, `logger/zapx/v0.36.0`). Services import specific modules from this repo.
+`duynhlab/pkg` is the shared Go SDK for the platform's microservices (`auth`, `user`, `product`, `cart`, `order`, `review`, `shipping`, `notification`, `payment`, `checkout` — all built as `web → logic → core` layered services). It is a **multi-module monorepo** — there is no top-level `go.mod`; all code lives in the 12 per-directory modules, each independently versioned and tagged (e.g. `httpx/v0.36.0`, `obsx/v0.36.0`, `logger/slogx/v0.2.0`). Services import specific modules from this repo.
 
 The repository provides: generated gRPC/protobuf contracts, structured logging, OpenTelemetry bootstrap, HTTP and gRPC transport helpers, authentication middleware, database access, migrations, startup flags, idempotency handling, and Temporal client/worker helpers.
 
 ## Repository layout
 
-There is **no top-level `go.mod`** — the single-module line (`github.com/duynhlab/pkg`) is frozen at `v0.35.0` and will never publish another version. Each of the 13 modules has its own `go.mod`:
+There is **no top-level `go.mod`** — the single-module line (`github.com/duynhlab/pkg`) is frozen at `v0.35.0` and will never publish another version. Each of the 12 modules has its own `go.mod`:
 
 - `proto/` — one module holding the versioned gRPC contracts for all services (`cart`, `inventory`, `notification`, `order`, `payment`, `product`, `review`, `shipping`, each under `<svc>/v1/`). Source `.proto` files and the **committed** generated `.pb.go` stubs live together; `buf` drives codegen from the repo root.
-- `logger/slogx/` — **the application logging facade** (RFC-0031 / ADR-070): one context-first `log/slog` API that renders a single redacted record to the platform JSON envelope on stdout and over OTLP, with a mandatory privacy boundary and `Event` for catalog records. Services adopt it in Phase 3; see [docs/MIGRATION-slogx.md](docs/MIGRATION-slogx.md).
-- `logger/zapx/`, `logger/zerolog/`, `logger/clog/` — three independent logger modules, one per backend, retired as services adopt `logger/slogx`. `logger/zapx` (zap) is the production default today — every service uses it and pairs it with `obsx.ZapCore` for OTLP log export, which exists only up to obsx v0.44 (v0.45.0 removed it with `TraceContext` and the otelzap dependency). `logger/clog` (stdlib `log/slog` via chainguard-dev/clog) is the slog-based alternative; `logger/zerolog` wraps rs/zerolog. All inject the active trace ID into log lines.
+- `logger/slogx/` — **the application logging facade** (RFC-0031 / ADR-070): one context-first `log/slog` API that renders a single redacted record to the platform JSON envelope on stdout and over OTLP, with a mandatory privacy boundary and `Event` for catalog records. Every service logs through it; [docs/MIGRATION-slogx.md](docs/MIGRATION-slogx.md) records how the fleet moved.
 - `flagx/` — startup-validated environment flags (`Enum`/`MustEnum`, `Percent`/`MustPercent`). Values are read and validated once at startup, fail fast, and are bounded by construction so they are safe as metric labels.
 - `httpx/` — shared HTTP helpers on gin: consistent error responses (`RespondError`) and pagination (`ParsePage`, `NewPaginated`).
 - `grpcx/` — gRPC server and client helpers for east-west calls: `NewServer` (otelgrpc stats handler, health service, reflection, panic recovery, access logging), `Dial` (otelgrpc, `round_robin` over `dns:///`, default per-RPC deadline), machine-readable error reasons (`reasons.go`), telemetry filters.
@@ -56,11 +55,11 @@ There is **no top-level `go.mod`** — the single-module line (`github.com/duynh
 
 This is the most important thing to understand about this repo:
 
-- **Every directory with a `go.mod` is an independent module.** There are 15 taggable modules (counted at `find . -name go.mod`; the figure was two low before `httpmw` and `logger/slogx`).
-- **Each module gets its own git tag** in the form `<module-path>/v<semver>` (e.g. `httpx/v0.36.0`, `logger/zapx/v0.36.0`). Module tags continue the pre-split numbering — the last single-module tag was `v0.35.0`, so per-module history starts at `v0.36.0`. A module first published after the split starts its own history at `v0.1.0` instead (`httpmw`, `logger/slogx`).
+- **Every directory with a `go.mod` is an independent module.** There are 12 taggable modules (counted at `find . -name go.mod`). `logger/zapx`, `logger/zerolog` and `logger/clog` were removed once the fleet moved to `logger/slogx`; their published tags still resolve, but they are gone from the tree and get no new releases.
+- **Each module gets its own git tag** in the form `<module-path>/v<semver>` (e.g. `httpx/v0.36.0`, `logger/slogx/v0.2.0`). Module tags continue the pre-split numbering — the last single-module tag was `v0.35.0`, so per-module history starts at `v0.36.0`. A module first published after the split starts its own history at `v0.1.0` instead (`httpmw`, `logger/slogx`).
 - **External consumers** import specific tagged versions: `go get github.com/duynhlab/pkg/httpx@v0.36.0`.
 - **The old root module line is dead.** `github.com/duynhlab/pkg` is frozen at `v0.35.0`; a dependency graph that mixes the old require with a new per-module require fails immediately with `ambiguous import` (both provide the same package paths), and no newer root version will ever exist to resolve it — consumers must drop the old require entirely. Never re-create a root `go.mod` or put Go files at the repo root.
-- **There are currently no cross-module dependencies** inside this repo — every module builds standalone. Keep it that way when you can. If a genuine internal dependency ever appears, the dependent module carries a real published version in `require` **plus** a permanent sibling `replace` (e.g. `replace github.com/duynhlab/pkg/logger/zapx => ../logger/zapx`) for local development; `replace` in a non-main module is ignored by external consumers, so the `require` version must always be real.
+- **There are currently no cross-module dependencies** inside this repo — every module builds standalone. Keep it that way when you can. If a genuine internal dependency ever appears, the dependent module carries a real published version in `require` **plus** a permanent sibling `replace` (e.g. `replace github.com/duynhlab/pkg/flagx => ../flagx`) for local development; `replace` in a non-main module is ignored by external consumers, so the `require` version must always be real.
 - **Changing one module may require updating dependents in the services.** A change to `obsx.ForceFlush` or to the logger provider it installs, for example, affects every service's `main()`, which wires it into `logger/slogx`.
 - **Do not use `go.work`.** With no cross-module imports there is nothing for a workspace to resolve, and a workspace file would mask module-boundary errors that CI will catch.
 
@@ -70,7 +69,7 @@ Modules are organised in strict layers. **A module may only import modules from 
 
 **Layer 0 — foundation.** Zero internal dependencies.
 
-- `proto`, `logger/slogx`, `logger/zapx`, `logger/zerolog`, `logger/clog`, `flagx`
+- `proto`, `logger/slogx`, `flagx`
 
 **Layer 1 — building blocks.** May import Layer 0 only.
 
@@ -90,7 +89,7 @@ Concrete rules that follow from this:
 - **`grpcx` does not import `proto`.** Interceptors are generic. Anything that needs a concrete message type belongs in the service.
 - **`httpx` and `authmw` do not import each other.** Both produce gin middleware/helpers. Composition happens in the service.
 - **`idempotency` does not import `dbx`.** Both bind to `*pgxpool.Pool` directly, which keeps them independent siblings — but they must stay on compatible pgx major versions.
-- **Stdlib and shared-ecosystem types at the boundary.** Types appearing in an exported signature become a mandatory dependency for every consumer; types used only inside a function body do not. Prefer `context.Context`, `error`, `*zap.Logger`, `fs.FS`, `*pgxpool.Pool`, or a narrow interface declared locally. Never put a type from another `duynhlab/pkg` module into an exported signature.
+- **Stdlib and shared-ecosystem types at the boundary.** Types appearing in an exported signature become a mandatory dependency for every consumer; types used only inside a function body do not. Prefer `context.Context`, `error`, `*slog.Logger`, `fs.FS`, `*pgxpool.Pool`, or a narrow interface declared locally. Never put a type from another `duynhlab/pkg` module into an exported signature.
 - **Consumer-side interfaces.** When a lower-layer module needs a capability from a higher layer, it declares the interface itself and lets `main()` inject the implementation, or accepts the OTel API's provider interfaces (see `dbx.WithTracerProvider`/`WithMeterProvider`).
 - **Nested modules are the escape hatch.** When an implementation genuinely needs a Layer 2 dependency, put it in a nested module rather than raising the parent's layer — its own `go.mod`, its own tag (the `logger/*` modules already follow this shape). A hypothetical Postgres-backed store for a Layer 1 module would live in `<module>/postgres/` and may import `dbx`; the parent stays Layer 1.
 
@@ -98,12 +97,12 @@ Enforcement lives in `.golangci.yml` via `depguard` (terminal-module imports and
 
 ## Build, test, lint
 
-All targets in the root `Makefile`. Module paths use `:` as separator in make targets (`logger/zapx` → `logger:zapx`).
+All targets in the root `Makefile`. Module paths use `:` as separator in make targets (`logger/slogx` → `logger:slogx`).
 
 - `make modules` — list the modules the Makefile discovered. Run this after adding a module to confirm it was picked up.
 - `make all` — runs `tidy`, `fmt`, `vet`, `lint` for all modules.
 - `make test` — runs the full gate for ALL modules. `make test TAGS=integration` additionally runs the testcontainers-backed integration tests (needs a Docker daemon).
-- `make test-<module>` — runs tidy, fmt, vet, lint, then `go test ./... -race -coverprofile coverage.out` for a single module. Examples: `make test-obsx`, `make test-logger:zapx`.
+- `make test-<module>` — runs tidy, fmt, vet, lint, then `go test ./... -race -coverprofile coverage.out` for a single module. Examples: `make test-obsx`, `make test-logger:slogx`.
 - `make tidy` / `make tidy-<module>` — `go mod tidy` for all or one module.
 - `make lint` / `make lint-<module>` — `golangci-lint` (pinned, via `go run`) with the root `.golangci.yml`.
 - `make coverage` — merge per-module coverage profiles into the root `coverage.out` for SonarCloud.
@@ -153,13 +152,13 @@ Generated files (never hand-edit):
 
 ## Gotchas and non-obvious rules
 
-- **No top-level `go.mod`.** From the repo root, `go build ./...` and `go test ./...` fail with "go.mod file not found" — nothing at the root builds or tests the 13 modules. Always work within a module directory or use `make test-<module>`.
-- **Module versioning is independent.** Changing `logger/zapx` does not bump `httpx`. Tag each changed module separately at release time.
+- **No top-level `go.mod`.** From the repo root, `go build ./...` and `go test ./...` fail with "go.mod file not found" — nothing at the root builds or tests the 12 modules. Always work within a module directory or use `make test-<module>`.
+- **Module versioning is independent.** Changing `logger/slogx` does not bump `httpx`. Tag each changed module separately at release time.
 - **Tag order matters once modules depend on each other.** Tag dependencies before dependents (Layer 0 → 1 → 2), otherwise a `require` line points at a tag that does not exist yet and external `go get` fails even though local builds pass.
 - **A pushed tag cannot be fixed.** The Go module proxy caches immediately. A wrong `obsx/v0.36.0` cannot be corrected — you must burn the version and publish `v0.36.1`. `make release-<module>` checks the module exists and the tree is clean, but it cannot check that the content is right.
 - **Adding a new exported symbol is a cross-repo contract change.** All platform services depend on these modules. Renaming, removing, or changing the signature of any exported type or function breaks downstream consumers even if this repo's tests pass.
 - **Adding a new module** requires: `go mod init github.com/duynhlab/pkg/<name>`, adding it to the Repository layout and Dependency rules sections above, and adding it to `README.md`. The Makefile discovers it automatically — confirm with `make modules`.
 - **The Makefile computes `MODULES` dynamically** by scanning for `go.mod` files, bounded by `-maxdepth 4`. A module nested deeper than that bound disappears from every target with no error. Run `make modules` after adding one and confirm the count.
-- **Colon encoding in make targets.** `logger/zapx` is targeted as `make test-logger:zapx`. The Makefile translates `:` back to `/` internally.
+- **Colon encoding in make targets.** `logger/slogx` is targeted as `make test-logger:slogx`. The Makefile translates `:` back to `/` internally.
 - **`flagx` is startup-time by design.** It reads and validates env vars once, at process start, and fails fast on invalid values. Do not use it for per-request or runtime-mutable flags — that is a different tool.
-- **Naming is inconsistent by history.** Some modules carry an `x` suffix (`httpx`, `grpcx`, `dbx`, `obsx`, `flagx`, `migratex`, `temporalx`, `logger/zapx`) and some do not (`proto`, `authmw`, `idempotency`). Do not rename existing modules — the import path is a published contract. New modules follow the `x` suffix convention.
+- **Naming is inconsistent by history.** Some modules carry an `x` suffix (`httpx`, `grpcx`, `dbx`, `obsx`, `flagx`, `migratex`, `temporalx`, `logger/slogx`) and some do not (`proto`, `authmw`, `idempotency`). Do not rename existing modules — the import path is a published contract. New modules follow the `x` suffix convention.

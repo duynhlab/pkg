@@ -1,5 +1,9 @@
 # Migrating a service from `logger/zapx` to `logger/slogx`
 
+> **Complete.** Every service moved in RFC-0031 Phase 3 (September 2026) and
+> `logger/zapx` has since left this repo; its last tag, `v0.36.1`, still
+> resolves. This page stays as the record of what changed at the call site.
+
 One facade for application logging (`logger/slogx`), replacing `logger/zapx`
 plus `obsx.ZapCore` plus `obsx.TraceContext`. The envelope on stdout is
 unchanged, so dashboards, stored queries and alerts that read `timestamp`,

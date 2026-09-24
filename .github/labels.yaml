@@ -60,7 +60,7 @@
   description: proto module — gRPC contracts and generated stubs
   color: '#00e54d'
 - name: area/logger
-  description: logger/zapx, logger/zerolog, logger/clog modules
+  description: logger/slogx module — the application logging facade
   color: '#22c55e'
 - name: area/flagx
   description: flagx module — startup-validated environment flags
