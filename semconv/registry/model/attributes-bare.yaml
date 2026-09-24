@@ -1,0 +1,575 @@
+# Single-segment keys: bounded labels on business metrics, diagnostic fields,
+# and the keys the Temporal SDK adds to records. Declared, not namespaced.
+groups:
+- id: registry.platform.bare
+  type: attribute_group
+  display_name: Bare attributes
+  brief: Single-segment keys the fleet writes. ADR-076 leaves them un-namespaced; they only have to be
+    declared.
+  attributes:
+  - id: action
+    type: string
+    stability: development
+    brief: Action on log, written by order.
+    examples:
+    - example
+  - id: activity_type
+    type: string
+    stability: development
+    brief: The Temporal activity type on an SDK metric.
+    examples:
+    - example
+  - id: addr
+    type: string
+    stability: development
+    brief: Addr on log, written by checkout, order, product.
+    examples:
+    - example
+  - id: age
+    type: int
+    stability: development
+    brief: Age on log, written by order.
+    examples:
+    - 1
+  - id: attempt
+    type: int
+    stability: development
+    brief: Attempt on log, written by checkout, order, payment.
+    examples:
+    - 1
+  - id: attempts
+    type: int
+    stability: development
+    brief: How many attempts a bounded retry made before giving up.
+    examples:
+    - 1
+  - id: audience
+    type: string
+    stability: development
+    brief: The JWT audience a verifier was configured with (startup record).
+    examples:
+    - example
+  - id: batch
+    type: int
+    stability: development
+    brief: Batch on log, written by order.
+    examples:
+    - 1
+  - id: batch_size
+    type: int
+    stability: development
+    brief: Batch size on log, written by order.
+    examples:
+    - 1
+  - id: bound_charge
+    type: string
+    stability: development
+    brief: Bound charge on log, written by payment.
+    examples:
+    - example
+  - id: bound_operation
+    type: string
+    stability: development
+    brief: Bound operation on log, written by payment.
+    examples:
+    - example
+  - id: breach
+    type: string
+    stability: development
+    brief: Breach on log, written by order.
+    examples:
+    - example
+  - id: cache_addr
+    type: string
+    stability: development
+    brief: Cache addr on log, written by product.
+    examples:
+    - example
+  - id: candidates
+    type: int
+    stability: development
+    brief: Candidates on log, written by order.
+    examples:
+    - 1
+  - id: captured
+    type: boolean
+    stability: development
+    brief: Whether a mockpay charge is captured.
+    examples:
+    - true
+  - id: channel
+    type: string
+    stability: development
+    brief: 'The delivery channel of a notification: email or sms.'
+    examples:
+    - example
+  - id: charge
+    type: string
+    stability: development
+    brief: The provider charge id a mockpay record refers to (correlation only).
+    examples:
+    - example
+  - id: class
+    type: string
+    stability: development
+    brief: The discrepancy class a reconciliation run reports.
+    examples:
+    - example
+  - id: client_name
+    type: string
+    stability: development
+    brief: The Temporal client name on an SDK metric.
+    examples:
+    - example
+  - id: component
+    type: string
+    stability: development
+    brief: 'Which entry point a lifecycle event describes: api, worker or mockpay.'
+    examples:
+    - example
+  - id: count
+    type: int
+    stability: development
+    brief: A small count on a diagnostic record.
+    examples:
+    - 1
+  - id: created
+    type: boolean
+    stability: development
+    brief: Whether a diagnostic write created a new row.
+    examples:
+    - true
+  - id: created_at
+    type: int
+    stability: development
+    brief: Created at on log, written by payment.
+    examples:
+    - 1
+  - id: currency
+    type: string
+    stability: development
+    brief: ISO 4217 code from the payment allowlist, or other.
+    examples:
+    - example
+  - id: degraded
+    type: string
+    stability: development
+    brief: Degraded on log, written by order.
+    examples:
+    - example
+  - id: delay
+    type: int
+    stability: development
+    brief: Delay on log, written by cart, checkout, inventory, notification, order, payment, product,
+      review, shipping, user.
+    examples:
+    - 1
+  - id: duplicate
+    type: boolean
+    stability: development
+    brief: Whether a delivered webhook was a duplicate of one already recorded.
+    examples:
+    - true
+  - id: endpoint
+    type: string
+    stability: development
+    brief: Endpoint on log, written by cart, checkout, inventory, notification, order, payment, product,
+      review, shipping, user.
+    examples:
+    - example
+  - id: event
+    type: string
+    stability: development
+    brief: The catalog name of a named log event (docs/api/logs.md § Event catalog).
+    examples:
+    - example
+  - id: event_type
+    type: string
+    stability: development
+    brief: The provider webhook event type.
+    examples:
+    - example
+  - id: examined
+    type: int
+    stability: development
+    brief: Examined on log, written by order.
+    examples:
+    - 1
+  - id: found
+    type: boolean
+    stability: development
+    brief: Whether a diagnostic lookup found a row.
+    examples:
+    - true
+  - id: from
+    type: int
+    stability: development
+    brief: From on log, written by payment.
+    examples:
+    - 1
+  - id: has_payment
+    type: boolean
+    stability: development
+    brief: Has payment on log, written by order.
+    examples:
+    - true
+  - id: has_shipment
+    type: boolean
+    stability: development
+    brief: Has shipment on log, written by order.
+    examples:
+    - true
+  - id: hostport
+    type: string
+    stability: development
+    brief: Hostport on log, written by checkout, order.
+    examples:
+    - example
+  - id: id
+    type: string
+    stability: development
+    brief: A provider-side identifier on a mockpay diagnostic record (correlation only).
+    examples:
+    - example
+  - id: interval
+    type: int
+    stability: development
+    brief: Interval on log, written by order.
+    examples:
+    - 1
+  - id: inventory_grpc_addr
+    type: string
+    stability: development
+    brief: Inventory grpc addr on log, written by product.
+    examples:
+    - example
+  - id: issuer
+    type: string
+    stability: development
+    brief: Issuer on log, written by product.
+    examples:
+    - example
+  - id: kind
+    type: string
+    stability: development
+    brief: A bounded kind label on a business counter.
+    examples:
+    - example
+  - id: layer
+    type: string
+    stability: development
+    brief: 'Which layer of a service a span belongs to: web or logic.'
+    examples:
+    - example
+  - id: limit
+    type: int
+    stability: development
+    brief: Limit on log, written by review.
+    examples:
+    - 1
+  - id: max_confirm_write
+    type: int
+    stability: development
+    brief: Max confirm write on log, written by checkout.
+    examples:
+    - 1
+  - id: mode
+    type: string
+    stability: development
+    brief: Single or bulk, for a mark-as-read.
+    examples:
+    - example
+  - id: namespace
+    type: string
+    stability: development
+    brief: The Temporal namespace on an SDK metric.
+    examples:
+    - example
+  - id: op
+    type: string
+    stability: development
+    brief: 'The money or provider operation a metric point counts: charge, capture, void, refund.'
+    examples:
+    - example
+  - id: operation
+    type: string
+    stability: development
+    brief: The bounded operation a retry, command or availability check belongs to.
+    examples:
+    - example
+  - id: order_id
+    type: string
+    stability: development
+    brief: Order id on shipping spans (correlation only; the canonical key is order.id).
+    examples:
+    - example
+  - id: order_status
+    type: string
+    stability: development
+    brief: Order status on log, written by order.
+    examples:
+    - example
+  - id: otlp_logs
+    type: boolean
+    stability: development
+    brief: Otlp logs on log, written by cart, checkout, inventory, notification, order, payment, product,
+      review, shipping, user.
+    examples:
+    - true
+  - id: otlp_metrics
+    type: boolean
+    stability: development
+    brief: Otlp metrics on log, written by cart, checkout, inventory, notification, order, payment, product,
+      review, shipping, user.
+    examples:
+    - true
+  - id: outbox_id
+    type: int
+    stability: development
+    brief: Outbox row id on an order dispatcher record (correlation only).
+    examples:
+    - 1
+  - id: outcome
+    type: string
+    stability: development
+    brief: The bounded outcome of a decision, from the set the owning event or metric lists.
+    examples:
+    - example
+  - id: outcome_class
+    type: string
+    stability: development
+    brief: Outcome class on log, written by payment.
+    examples:
+    - example
+  - id: participant
+    type: string
+    stability: development
+    brief: Which service a saga participant call went to.
+    examples:
+    - example
+  - id: poll_interval
+    type: int
+    stability: development
+    brief: Poll interval on log, written by order.
+    examples:
+    - 1
+  - id: poller_type
+    type: string
+    stability: development
+    brief: The Temporal poller type on an SDK metric.
+    examples:
+    - example
+  - id: port
+    type: string
+    stability: development
+    brief: Port on log, written by cart, checkout, inventory, notification, order, product, review, shipping,
+      user.
+    examples:
+    - example
+  - id: reason
+    type: string
+    stability: development
+    brief: A bounded reason code explaining a decision (e.g. price_changed, timer).
+    examples:
+    - example
+  - id: redial_interval
+    type: int
+    stability: development
+    brief: Redial interval on log, written by checkout, order.
+    examples:
+    - 1
+  - id: replayed
+    type: boolean
+    stability: development
+    brief: Replayed on log, written by payment.
+    examples:
+    - true
+  - id: requested_charge
+    type: string
+    stability: development
+    brief: Requested charge on log, written by payment.
+    examples:
+    - example
+  - id: requested_operation
+    type: string
+    stability: development
+    brief: Requested operation on log, written by payment.
+    examples:
+    - example
+  - id: reservation_order_id
+    type: string
+    stability: development
+    brief: Reservation order id on log, written by order.
+    examples:
+    - example
+  - id: reservation_status
+    type: string
+    stability: development
+    brief: Reservation status on log, written by order.
+    examples:
+    - example
+  - id: resolution
+    type: string
+    stability: development
+    brief: Resolution on log, written by payment.
+    examples:
+    - example
+  - id: resolved
+    type: string
+    stability: development
+    brief: Resolved on log, written by order.
+    examples:
+    - example
+  - id: result
+    type: string
+    stability: development
+    brief: The bounded result of a counted call, e.g. ok, declined, error.
+    examples:
+    - example
+  - id: review_grpc_addr
+    type: string
+    stability: development
+    brief: Review grpc addr on log, written by product.
+    examples:
+    - example
+  - id: row_participant
+    type: string
+    stability: development
+    brief: Row participant on log, written by order.
+    examples:
+    - example
+  - id: rows
+    type: int
+    stability: development
+    brief: Rows on log, written by checkout.
+    examples:
+    - 1
+  - id: run_status
+    type: string
+    stability: development
+    brief: Run status on log, written by order.
+    examples:
+    - example
+  - id: sample_rate
+    type: double
+    stability: development
+    brief: Sample rate on log, written by cart, checkout, inventory, notification, order, payment, product,
+      review, shipping, user.
+    examples:
+    - 1.5
+  - id: source
+    type: string
+    stability: development
+    brief: Which surface originated a counted action (user REST or internal saga).
+    examples:
+    - example
+  - id: stage
+    type: string
+    stability: development
+    brief: Stage on log, written by payment.
+    examples:
+    - example
+  - id: status
+    type: string
+    stability: development
+    brief: A bounded status value on a business counter or diagnostic record.
+    examples:
+    - example
+  - id: status_code
+    type: string
+    stability: development
+    brief: A provider or downstream status code on a diagnostic record.
+    examples:
+    - example
+  - id: step
+    type: string
+    stability: development
+    brief: The saga compensation step a counter point belongs to.
+    examples:
+    - example
+  - id: takeover
+    type: int
+    stability: development
+    brief: Takeover on log, written by checkout.
+    examples:
+    - 1
+  - id: target
+    type: string
+    stability: development
+    brief: The dependency a startup or connection diagnostic names.
+    examples:
+    - example
+  - id: task_queue
+    type: string
+    stability: development
+    brief: The Temporal task queue on an SDK metric.
+    examples:
+    - example
+  - id: through
+    type: int
+    stability: development
+    brief: Through on log, written by payment.
+    examples:
+    - 1
+  - id: timeout
+    type: int
+    stability: development
+    brief: Timeout on log, written by cart, inventory, notification, order, payment, product, review,
+      shipping, user.
+    examples:
+    - 1
+  - id: total
+    type: int
+    stability: development
+    brief: Total on log, written by product.
+    examples:
+    - 1
+  - id: traces
+    type: boolean
+    stability: development
+    brief: Traces on log, written by cart, checkout, inventory, notification, order, payment, product,
+      review, shipping, user.
+    examples:
+    - true
+  - id: ttl_detail
+    type: int
+    stability: development
+    brief: Ttl detail on log, written by product.
+    examples:
+    - 1
+  - id: ttl_list
+    type: int
+    stability: development
+    brief: Ttl list on log, written by product.
+    examples:
+    - 1
+  - id: violations
+    type: int
+    stability: development
+    brief: Violations on log, written by payment.
+    examples:
+    - 1
+  - id: weight
+    type: double
+    stability: development
+    brief: Parcel weight on a shipping quote span.
+    examples:
+    - 1.5
+  - id: window
+    type: int
+    stability: development
+    brief: Window on log, written by order.
+    examples:
+    - 1
+  - id: worker_type
+    type: string
+    stability: development
+    brief: The Temporal worker type (workflow or activity) on an SDK metric.
+    examples:
+    - example
+  - id: workflow_type
+    type: string
+    stability: development
+    brief: The Temporal workflow type on an SDK metric.
+    examples:
+    - example

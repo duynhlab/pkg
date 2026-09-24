@@ -1,0 +1,701 @@
+# Instruments that libraries the fleet runs emit under their own names (the
+# Temporal Go SDK, pgxpool). Declared as they are; origin: vendor lets the
+# unit rule accept the unit the library chose.
+groups:
+- id: metric.db.client.operation.errors
+  type: metric
+  metric_name: db.client.operation.errors
+  instrument: counter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (db).
+  attributes:
+  - ref: db.system.name
+  - ref: pgx.operation.type
+  annotations:
+    origin: vendor
+- id: metric.pgxpool.acquire_duration
+  type: metric
+  metric_name: pgxpool.acquire_duration
+  instrument: counter
+  unit: ns
+  stability: development
+  brief: Emitted by a library the fleet runs (pgxpool).
+  attributes:
+  - ref: db.client.connection.pool.name
+  - ref: db.system.name
+  annotations:
+    origin: vendor
+- id: metric.pgxpool.acquired_connections
+  type: metric
+  metric_name: pgxpool.acquired_connections
+  instrument: updowncounter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (pgxpool).
+  attributes:
+  - ref: db.client.connection.pool.name
+  - ref: db.system.name
+  annotations:
+    origin: vendor
+- id: metric.pgxpool.acquires
+  type: metric
+  metric_name: pgxpool.acquires
+  instrument: counter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (pgxpool).
+  attributes:
+  - ref: db.client.connection.pool.name
+  - ref: db.system.name
+  annotations:
+    origin: vendor
+- id: metric.pgxpool.canceled_acquires
+  type: metric
+  metric_name: pgxpool.canceled_acquires
+  instrument: counter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (pgxpool).
+  attributes:
+  - ref: db.client.connection.pool.name
+  - ref: db.system.name
+  annotations:
+    origin: vendor
+- id: metric.pgxpool.constructing_connections
+  type: metric
+  metric_name: pgxpool.constructing_connections
+  instrument: updowncounter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (pgxpool).
+  attributes:
+  - ref: db.client.connection.pool.name
+  - ref: db.system.name
+  annotations:
+    origin: vendor
+- id: metric.pgxpool.empty_acquire
+  type: metric
+  metric_name: pgxpool.empty_acquire
+  instrument: counter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (pgxpool).
+  attributes:
+  - ref: db.client.connection.pool.name
+  - ref: db.system.name
+  annotations:
+    origin: vendor
+- id: metric.pgxpool.empty_acquire_wait_time
+  type: metric
+  metric_name: pgxpool.empty_acquire_wait_time
+  instrument: counter
+  unit: ns
+  stability: development
+  brief: Emitted by a library the fleet runs (pgxpool).
+  attributes:
+  - ref: db.client.connection.pool.name
+  - ref: db.system.name
+  annotations:
+    origin: vendor
+- id: metric.pgxpool.idle_connections
+  type: metric
+  metric_name: pgxpool.idle_connections
+  instrument: updowncounter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (pgxpool).
+  attributes:
+  - ref: db.client.connection.pool.name
+  - ref: db.system.name
+  annotations:
+    origin: vendor
+- id: metric.pgxpool.max_connections
+  type: metric
+  metric_name: pgxpool.max_connections
+  instrument: gauge
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (pgxpool).
+  attributes:
+  - ref: db.client.connection.pool.name
+  - ref: db.system.name
+  annotations:
+    origin: vendor
+- id: metric.pgxpool.max_idle_destroys
+  type: metric
+  metric_name: pgxpool.max_idle_destroys
+  instrument: counter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (pgxpool).
+  attributes:
+  - ref: db.client.connection.pool.name
+  - ref: db.system.name
+  annotations:
+    origin: vendor
+- id: metric.pgxpool.max_lifetime_destroys
+  type: metric
+  metric_name: pgxpool.max_lifetime_destroys
+  instrument: counter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (pgxpool).
+  attributes:
+  - ref: db.client.connection.pool.name
+  - ref: db.system.name
+  annotations:
+    origin: vendor
+- id: metric.pgxpool.new_connections
+  type: metric
+  metric_name: pgxpool.new_connections
+  instrument: counter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (pgxpool).
+  attributes:
+  - ref: db.client.connection.pool.name
+  - ref: db.system.name
+  annotations:
+    origin: vendor
+- id: metric.pgxpool.total_connections
+  type: metric
+  metric_name: pgxpool.total_connections
+  instrument: updowncounter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (pgxpool).
+  attributes:
+  - ref: db.client.connection.pool.name
+  - ref: db.system.name
+  annotations:
+    origin: vendor
+- id: metric.temporal_activity_execution_failed
+  type: metric
+  metric_name: temporal_activity_execution_failed
+  instrument: counter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_activity_execution_latency
+  type: metric
+  metric_name: temporal_activity_execution_latency
+  instrument: histogram
+  unit: s
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_activity_poll_no_task
+  type: metric
+  metric_name: temporal_activity_poll_no_task
+  instrument: counter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_activity_schedule_to_start_latency
+  type: metric
+  metric_name: temporal_activity_schedule_to_start_latency
+  instrument: histogram
+  unit: s
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_activity_succeed_endtoend_latency
+  type: metric
+  metric_name: temporal_activity_succeed_endtoend_latency
+  instrument: histogram
+  unit: s
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_long_request
+  type: metric
+  metric_name: temporal_long_request
+  instrument: counter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: operation
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_long_request_attempt
+  type: metric
+  metric_name: temporal_long_request_attempt
+  instrument: counter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: operation
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_long_request_failure
+  type: metric
+  metric_name: temporal_long_request_failure
+  instrument: counter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: operation
+  - ref: status_code
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_long_request_failure_attempt
+  type: metric
+  metric_name: temporal_long_request_failure_attempt
+  instrument: counter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: operation
+  - ref: status_code
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_long_request_latency
+  type: metric
+  metric_name: temporal_long_request_latency
+  instrument: histogram
+  unit: s
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: operation
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_long_request_latency_attempt
+  type: metric
+  metric_name: temporal_long_request_latency_attempt
+  instrument: histogram
+  unit: s
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: operation
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_num_pollers
+  type: metric
+  metric_name: temporal_num_pollers
+  instrument: gauge
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: poller_type
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_poller_start
+  type: metric
+  metric_name: temporal_poller_start
+  instrument: counter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_request
+  type: metric
+  metric_name: temporal_request
+  instrument: counter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: operation
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_request_attempt
+  type: metric
+  metric_name: temporal_request_attempt
+  instrument: counter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: operation
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_request_failure
+  type: metric
+  metric_name: temporal_request_failure
+  instrument: counter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: operation
+  - ref: status_code
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_request_failure_attempt
+  type: metric
+  metric_name: temporal_request_failure_attempt
+  instrument: counter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: operation
+  - ref: status_code
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_request_latency
+  type: metric
+  metric_name: temporal_request_latency
+  instrument: histogram
+  unit: s
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: operation
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_request_latency_attempt
+  type: metric
+  metric_name: temporal_request_latency_attempt
+  instrument: histogram
+  unit: s
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: operation
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_sticky_cache_hit
+  type: metric
+  metric_name: temporal_sticky_cache_hit
+  instrument: counter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_sticky_cache_size
+  type: metric
+  metric_name: temporal_sticky_cache_size
+  instrument: gauge
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_sticky_cache_total_forced_eviction
+  type: metric
+  metric_name: temporal_sticky_cache_total_forced_eviction
+  instrument: counter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_worker_start
+  type: metric
+  metric_name: temporal_worker_start
+  instrument: counter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_worker_task_slots_available
+  type: metric
+  metric_name: temporal_worker_task_slots_available
+  instrument: gauge
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_worker_task_slots_used
+  type: metric
+  metric_name: temporal_worker_task_slots_used
+  instrument: gauge
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_workflow_completed
+  type: metric
+  metric_name: temporal_workflow_completed
+  instrument: counter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_workflow_endtoend_latency
+  type: metric
+  metric_name: temporal_workflow_endtoend_latency
+  instrument: histogram
+  unit: s
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_workflow_task_execution_latency
+  type: metric
+  metric_name: temporal_workflow_task_execution_latency
+  instrument: histogram
+  unit: s
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_workflow_task_queue_poll_empty
+  type: metric
+  metric_name: temporal_workflow_task_queue_poll_empty
+  instrument: counter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_workflow_task_queue_poll_succeed
+  type: metric
+  metric_name: temporal_workflow_task_queue_poll_succeed
+  instrument: counter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_workflow_task_replay_latency
+  type: metric
+  metric_name: temporal_workflow_task_replay_latency
+  instrument: histogram
+  unit: s
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
+- id: metric.temporal_workflow_task_schedule_to_start_latency
+  type: metric
+  metric_name: temporal_workflow_task_schedule_to_start_latency
+  instrument: histogram
+  unit: s
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: client_name
+  - ref: namespace
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor

@@ -1,1 +1,4 @@
 coverage.out
+
+# scratch checkout for make semconv-diff
+.semconv-base/

@@ -23,8 +23,8 @@ const (
 // ProcessStarted emits process.started when an entry point is ready to
 // serve. component is ComponentAPI, ComponentWorker or ComponentMockpay.
 func (l *Logger) ProcessStarted(ctx context.Context, component string) {
-	l.event(ctx, 4, slog.LevelInfo, "process.started", "process started", []slog.Attr{
-		slog.String("component", bounded(component, ComponentAPI, ComponentWorker, ComponentMockpay)),
+	l.event(ctx, 4, slog.LevelInfo, EventProcessStarted, "process started", []slog.Attr{
+		slog.String(KeyComponent, bounded(component, ComponentAPI, ComponentWorker, ComponentMockpay)),
 	})
 }
 
@@ -38,9 +38,9 @@ func (l *Logger) ProcessStopped(ctx context.Context, component, outcome string) 
 	if outcome != OutcomeGraceful {
 		level = slog.LevelError
 	}
-	l.event(ctx, 4, level, "process.stopped", "process stopped", []slog.Attr{
-		slog.String("component", bounded(component, ComponentAPI, ComponentWorker, ComponentMockpay)),
-		slog.String("outcome", outcome),
+	l.event(ctx, 4, level, EventProcessStopped, "process stopped", []slog.Attr{
+		slog.String(KeyComponent, bounded(component, ComponentAPI, ComponentWorker, ComponentMockpay)),
+		slog.String(KeyOutcome, outcome),
 	})
 }
 

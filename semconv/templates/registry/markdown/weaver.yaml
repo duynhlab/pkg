@@ -1,0 +1,11 @@
+# The event catalog as one Markdown table. homelab's docs/api/logs.md keeps a
+# richer hand-written copy (enum values, links) and checks it against this file
+# at the pinned pkg ref (make semconv-catalog-check), so prose and registry
+# cannot disagree on names, classes, attributes or owners.
+text_maps: {}
+templates:
+  - template: event-catalog.md.j2
+    filter: >
+      { events: [semconv_events[]] }
+    application_mode: single
+    file_name: semconv/docs/event-catalog.md

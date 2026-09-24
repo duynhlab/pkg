@@ -1,0 +1,563 @@
+# Business instruments the services declare. Each carries the UCUM unit its
+# code passes to WithUnit; brief = the instrument description.
+groups:
+- id: metric.cart.cleared.total
+  type: metric
+  metric_name: cart.cleared.total
+  instrument: counter
+  unit: '{clear}'
+  stability: development
+  brief: Cart clears by originating surface (user REST vs internal saga)
+  attributes:
+  - ref: source
+- id: metric.cart.items_added.total
+  type: metric
+  metric_name: cart.items_added.total
+  instrument: counter
+  unit: '{attempt}'
+  stability: development
+  brief: Add-to-cart attempts by outcome (quantity-rejection KPI)
+  attributes:
+  - ref: result
+- id: metric.cart.snapshot_requests.total
+  type: metric
+  metric_name: cart.snapshot_requests.total
+  instrument: counter
+  unit: '{request}'
+  stability: development
+  brief: gRPC GetCart snapshot reads (RFC-0015 checkout) by outcome
+  attributes:
+  - ref: result
+- id: metric.checkout.availability.check
+  type: metric
+  metric_name: checkout.availability.check
+  instrument: counter
+  unit: '{check}'
+  stability: development
+  brief: 'Inventory availability checks by outcome (RFC-0021 phase 4: inventory is the only authority)'
+  attributes:
+  - ref: result
+- id: metric.checkout.confirm.duration
+  type: metric
+  metric_name: checkout.confirm.duration
+  instrument: histogram
+  unit: s
+  stability: development
+  brief: End-to-end confirm handler duration
+- id: metric.checkout.price.changed
+  type: metric
+  metric_name: checkout.price.changed
+  instrument: counter
+  unit: '{quote}'
+  stability: development
+  brief: Confirms bounced with PRICE_CHANGED or STOCK_UNAVAILABLE (session requoted)
+- id: metric.checkout.promo.redeemed
+  type: metric
+  metric_name: checkout.promo.redeemed
+  instrument: counter
+  unit: '{redemption}'
+  stability: development
+  brief: Promo redemptions counted at confirm (P4)
+- id: metric.checkout.promo.rejected
+  type: metric
+  metric_name: checkout.promo.rejected
+  instrument: counter
+  unit: '{rejection}'
+  stability: development
+  brief: Promo rejections at the authoritative confirm gate, by reason
+- id: metric.checkout.sessions.confirmed
+  type: metric
+  metric_name: checkout.sessions.confirmed
+  instrument: counter
+  unit: '{session}'
+  stability: development
+  brief: Checkout sessions successfully confirmed into an order
+- id: metric.checkout.sessions.expired
+  type: metric
+  metric_name: checkout.sessions.expired
+  instrument: counter
+  unit: '{session}'
+  stability: development
+  brief: Sessions marked expired, by who noticed (timer = abandonment workflow, lazy = read-path backstop)
+  attributes:
+  - ref: reason
+- id: metric.grpc.reviews_truncated.total
+  type: metric
+  metric_name: grpc.reviews_truncated.total
+  instrument: counter
+  unit: '{response}'
+  stability: development
+  brief: GetProductReviews responses that filled the page cap (possible silent data loss)
+- id: metric.inventory.admin.command.total
+  type: metric
+  metric_name: inventory.admin.command.total
+  instrument: counter
+  unit: '{command}'
+  stability: development
+  brief: Protected stock commands, split by operation and outcome
+  attributes:
+  - ref: operation
+  - ref: outcome
+- id: metric.inventory.check.total
+  type: metric
+  metric_name: inventory.check.total
+  instrument: counter
+  unit: '{check}'
+  stability: development
+  brief: Whole-basket availability checks, split by outcome
+  attributes:
+  - ref: outcome
+- id: metric.inventory.reservation.total
+  type: metric
+  metric_name: inventory.reservation.total
+  instrument: counter
+  unit: '{reservation}'
+  stability: development
+  brief: Reservation commands, split by operation and outcome
+  attributes:
+  - ref: operation
+  - ref: outcome
+- id: metric.notification.read.total
+  type: metric
+  metric_name: notification.read.total
+  instrument: counter
+  unit: '{request}'
+  stability: development
+  brief: Notifications marked read, split by single vs bulk mark-all
+  attributes:
+  - ref: mode
+- id: metric.notification.send.duration
+  type: metric
+  metric_name: notification.send.duration
+  instrument: histogram
+  unit: s
+  stability: development
+  brief: Send-path latency from validated input to persisted notification, by channel
+  attributes:
+  - ref: channel
+- id: metric.order.cancellation.outbox.failed
+  type: metric
+  metric_name: order.cancellation.outbox.failed
+  instrument: gauge
+  unit: '{row}'
+  stability: development
+  brief: Cancellation starts that exhausted their attempts
+- id: metric.order.cancellation.outbox.oldest_pending_age
+  type: metric
+  metric_name: order.cancellation.outbox.oldest_pending_age
+  instrument: gauge
+  unit: s
+  stability: development
+  brief: Age in seconds of the oldest undispatched cancellation start
+- id: metric.order.cancellation.outbox.pending
+  type: metric
+  metric_name: order.cancellation.outbox.pending
+  instrument: gauge
+  unit: '{row}'
+  stability: development
+  brief: Cancellation starts not yet dispatched
+- id: metric.order.cancellation.outcomes.total
+  type: metric
+  metric_name: order.cancellation.outcomes.total
+  instrument: counter
+  unit: '{outcome}'
+  stability: development
+  brief: Cancellation-workflow terminal outcomes
+  attributes:
+  - ref: outcome
+- id: metric.order.cancellation.start_dispatch.total
+  type: metric
+  metric_name: order.cancellation.start_dispatch.total
+  instrument: counter
+  unit: '{dispatch}'
+  stability: development
+  brief: Cancellation-workflow start dispatches by result
+- id: metric.order.cancellations.total
+  type: metric
+  metric_name: order.cancellations.total
+  instrument: counter
+  unit: '{request}'
+  stability: development
+  brief: Cancel-order requests by result
+  attributes:
+  - ref: result
+- id: metric.order.cancelling.backlog
+  type: metric
+  metric_name: order.cancelling.backlog
+  instrument: gauge
+  unit: '{order}'
+  stability: development
+  brief: Orders stuck in cancelling longer than the workflow should need
+- id: metric.order.fulfillment.start_dispatch.total
+  type: metric
+  metric_name: order.fulfillment.start_dispatch.total
+  instrument: counter
+  unit: '{dispatch}'
+  stability: development
+  brief: Outbox dispatch attempts by result
+- id: metric.order.fulfillment.start_outbox.failed
+  type: metric
+  metric_name: order.fulfillment.start_outbox.failed
+  instrument: gauge
+  unit: '{row}'
+  stability: development
+  brief: Start requests that gave up and need a manual requeue
+- id: metric.order.fulfillment.start_outbox.oldest_age
+  type: metric
+  metric_name: order.fulfillment.start_outbox.oldest_age
+  instrument: gauge
+  unit: s
+  stability: development
+  brief: Age of the oldest pending start request
+- id: metric.order.fulfillment.start_outbox.pending
+  type: metric
+  metric_name: order.fulfillment.start_outbox.pending
+  instrument: gauge
+  unit: '{row}'
+  stability: development
+  brief: Committed orders whose fulfillment start is still owed
+- id: metric.order.fulfillment.start_participant.total
+  type: metric
+  metric_name: order.fulfillment.start_participant.total
+  instrument: counter
+  unit: '{call}'
+  stability: development
+  brief: Participant resolutions by branch, where the value came from, and whether the start was served
+  attributes:
+  - ref: participant
+  - ref: result
+  - ref: source
+- id: metric.order.inventory.commit_lag
+  type: metric
+  metric_name: order.inventory.commit_lag
+  instrument: histogram
+  unit: s
+  stability: development
+  brief: Seconds between the ConfirmOrder pivot and CommitInventory settling
+  attributes:
+  - ref: result
+- id: metric.order.manual_review.backlog
+  type: metric
+  metric_name: order.manual_review.backlog
+  instrument: gauge
+  unit: '{order}'
+  stability: development
+  brief: Orders parked in manual_review awaiting an operator decision
+- id: metric.order.operator.resolve.total
+  type: metric
+  metric_name: order.operator.resolve.total
+  instrument: counter
+  unit: '{command}'
+  stability: development
+  brief: manual_review resolve commands by target, reason and result
+  attributes:
+  - ref: reason
+  - ref: result
+  - ref: target
+- id: metric.order.payment.activity.total
+  type: metric
+  metric_name: order.payment.activity.total
+  instrument: counter
+  unit: '{call}'
+  stability: development
+  brief: Order-side payment activity calls by operation and result
+  attributes:
+  - ref: op
+  - ref: result
+- id: metric.order.projection.write_failures.total
+  type: metric
+  metric_name: order.projection.write_failures.total
+  instrument: counter
+  unit: '{failure}'
+  stability: development
+  brief: Processing-projection writes that exhausted retries
+- id: metric.order.reconciler.backlog
+  type: metric
+  metric_name: order.reconciler.backlog
+  instrument: gauge
+  unit: '{order}'
+  stability: development
+  brief: Terminal orders whose stock has not been confirmed to agree with their outcome
+- id: metric.order.reconciler.participant_disagreements.total
+  type: metric
+  metric_name: order.reconciler.participant_disagreements.total
+  instrument: counter
+  unit: '{disagreement}'
+  stability: development
+  brief: Orders holding an inventory reservation while not recorded as inventory-path
+  attributes:
+  - ref: row_participant
+- id: metric.order.reconciler.passes.truncated.total
+  type: metric
+  metric_name: order.reconciler.passes.truncated.total
+  instrument: counter
+  unit: '{pass}'
+  stability: development
+  brief: Reconciler passes that hit their batch cap, so the window was not fully examined
+- id: metric.order.reconciler.repairs.total
+  type: metric
+  metric_name: order.reconciler.repairs.total
+  instrument: counter
+  unit: '{repair}'
+  stability: development
+  brief: Inventory reconciler actions by kind
+  attributes:
+  - ref: action
+- id: metric.order.saga.compensation.total
+  type: metric
+  metric_name: order.saga.compensation.total
+  instrument: counter
+  unit: '{step}'
+  stability: development
+  brief: Saga compensation steps by step and result
+  attributes:
+  - ref: result
+  - ref: step
+- id: metric.order.saga.complete.failures.total
+  type: metric
+  metric_name: order.saga.complete.failures.total
+  instrument: counter
+  unit: '{failure}'
+  stability: development
+  brief: Complete activities that exhausted retries, leaving the order confirmed
+- id: metric.order.saga.outcome.total
+  type: metric
+  metric_name: order.saga.outcome.total
+  instrument: counter
+  unit: '{saga}'
+  stability: development
+  brief: Order-fulfillment saga terminal outcomes
+  attributes:
+  - ref: outcome
+- id: metric.order.stock_reservation.total
+  type: metric
+  metric_name: order.stock_reservation.total
+  instrument: counter
+  unit: '{reservation}'
+  stability: development
+  brief: Order-side stock-reserve activity outcomes by result
+  attributes:
+  - ref: participant
+  - ref: result
+- id: metric.order.value.minor
+  type: metric
+  metric_name: order.value.minor
+  instrument: histogram
+  unit: '1'
+  stability: development
+  brief: Order total at creation, in minor USD units
+- id: metric.payment.attempt.resolution.total
+  type: metric
+  metric_name: payment.attempt.resolution.total
+  instrument: counter
+  unit: '{resolution}'
+  stability: development
+  brief: Re-drives of an open UNKNOWN attempt, by operation and the class the provider answered with —
+    `UNKNOWN` here means the doubt survived the round-trip
+  attributes:
+  - ref: operation
+  - ref: outcome_class
+- id: metric.payment.attempt.write_failures.total
+  type: metric
+  metric_name: payment.attempt.write_failures.total
+  instrument: counter
+  unit: '{failure}'
+  stability: development
+  brief: Attempt rows that could not be written, by operation — the money state is still correct, but
+    its evidence is missing
+- id: metric.payment.authorization.total
+  type: metric
+  metric_name: payment.authorization.total
+  instrument: counter
+  unit: '{authorization}'
+  stability: development
+  brief: Payment authorization attempts by outcome (decline-rate KPI)
+  attributes:
+  - ref: currency
+  - ref: result
+- id: metric.payment.doubt.oldest_age_seconds
+  type: metric
+  metric_name: payment.doubt.oldest_age_seconds
+  instrument: gauge
+  unit: s
+  stability: development
+  brief: Age of the oldest unresolved provider outcome; the escalation signal, since one fresh unknown
+    is routine and an old one is not
+- id: metric.payment.doubt.open
+  type: metric
+  metric_name: payment.doubt.open
+  instrument: gauge
+  unit: '{attempt}'
+  stability: development
+  brief: Provider round-trips whose outcome is still unknown and unresolved
+- id: metric.payment.doubt.sweep_failures.total
+  type: metric
+  metric_name: payment.doubt.sweep_failures.total
+  instrument: counter
+  unit: '{failure}'
+  stability: development
+  brief: Worklist entries the background sweep could not even attempt, by operation — doubt that nothing
+    is currently working on
+- id: metric.payment.idempotency.release_failures.total
+  type: metric
+  metric_name: payment.idempotency.release_failures.total
+  instrument: counter
+  unit: '{failure}'
+  stability: development
+  brief: Idempotency keys that could not be unlocked after a failed attempt; each one delays a caller's
+    same-key retry until the takeover window
+- id: metric.payment.operation.total
+  type: metric
+  metric_name: payment.operation.total
+  instrument: counter
+  unit: '{operation}'
+  stability: development
+  brief: Money-lifecycle operations (capture/void/refund) by outcome
+  attributes:
+  - ref: op
+  - ref: result
+- id: metric.payment.provider.request.duration
+  type: metric
+  metric_name: payment.provider.request.duration
+  instrument: histogram
+  unit: s
+  stability: development
+  brief: mockpay provider call duration by operation and outcome
+  attributes:
+  - ref: op
+  - ref: outcome
+- id: metric.payment.provider.unknown.total
+  type: metric
+  metric_name: payment.provider.unknown.total
+  instrument: counter
+  unit: '{outcome}'
+  stability: development
+  brief: Provider calls that returned no verdict, by operation and stage — stage=park is a NEW doubt (an
+    intent enters processing), stage=resolve is a re-ask that ALSO answered nothing (existing doubt surviving).
+    The first GameDay read 2 against one parked row because both round-trips counted indistinguishably
+  attributes:
+  - ref: operation
+  - ref: stage
+- id: metric.payment.reconciliation.discrepancies.total
+  type: metric
+  metric_name: payment.reconciliation.discrepancies.total
+  instrument: counter
+  unit: '{discrepancy}'
+  stability: development
+  brief: Ledger-vs-provider discrepancies found per reconciliation run, by class
+  attributes:
+  - ref: class
+- id: metric.payment.reconciliation.heal_failures.total
+  type: metric
+  metric_name: payment.reconciliation.heal_failures.total
+  instrument: counter
+  unit: '{failure}'
+  stability: development
+  brief: Heal attempts that errored, by discrepancy class — previously only logged, so a heal that never
+    worked was invisible
+  attributes:
+  - ref: class
+- id: metric.payment.reconciliation.run.duration
+  type: metric
+  metric_name: payment.reconciliation.run.duration
+  instrument: histogram
+  unit: s
+  stability: development
+  brief: How long a reconciliation pass takes; a window that stops draining shows up here before it shows
+    up in staleness
+  attributes:
+  - ref: result
+- id: metric.payment.reconciliation.runs.total
+  type: metric
+  metric_name: payment.reconciliation.runs.total
+  instrument: counter
+  unit: '{run}'
+  stability: development
+  brief: Reconciliation passes by outcome — the answer to 'is the reconciler running at all', which a
+    discrepancy count alone cannot give
+  attributes:
+  - ref: result
+- id: metric.payment.reconciliation.watermark_age_seconds
+  type: metric
+  metric_name: payment.reconciliation.watermark_age_seconds
+  instrument: gauge
+  unit: s
+  stability: development
+  brief: How far behind now the reconciliation frontier is; grows without bound if the reconciler stops
+- id: metric.payment.reconciliation.window_violations.total
+  type: metric
+  metric_name: payment.reconciliation.window_violations.total
+  instrument: counter
+  unit: '{row}'
+  stability: development
+  brief: Provider transactions outside the window the pass asked for — a provider ignoring its bounds
+    can manufacture phantom missing_internal discrepancies (first GameDay, F1), so violating rows are
+    excluded and the watermark holds
+- id: metric.product.cache.gets
+  type: metric
+  metric_name: product.cache.gets
+  instrument: counter
+  unit: '{get}'
+  stability: development
+  brief: Product cache Get outcomes (hit/miss/error)
+  attributes:
+  - ref: result
+- id: metric.reviews.duplicate_rejected.total
+  type: metric
+  metric_name: reviews.duplicate_rejected.total
+  instrument: counter
+  unit: '{review}'
+  stability: development
+  brief: Review creates rejected as duplicates (pre-check + unique-violation race)
+- id: metric.reviews.rating
+  type: metric
+  metric_name: reviews.rating
+  instrument: histogram
+  unit: '1'
+  stability: development
+  brief: Star rating of newly created reviews (domain distribution)
+- id: metric.shipment.cancelled.total
+  type: metric
+  metric_name: shipment.cancelled.total
+  instrument: counter
+  unit: '{shipment}'
+  stability: development
+  brief: CancelShipment outcomes (saga compensation)
+  attributes:
+  - ref: outcome
+- id: metric.shipment.created.total
+  type: metric
+  metric_name: shipment.created.total
+  instrument: counter
+  unit: '{shipment}'
+  stability: development
+  brief: CreateShipment outcomes (order-fulfillment saga step 2)
+  attributes:
+  - ref: outcome
+- id: metric.shipment.lookup.total
+  type: metric
+  metric_name: shipment.lookup.total
+  instrument: counter
+  unit: '{lookup}'
+  stability: development
+  brief: Shipment read lookups by kind and hit/miss
+  attributes:
+  - ref: found
+  - ref: kind
+- id: metric.user.profile_lookup.total
+  type: metric
+  metric_name: user.profile_lookup.total
+  instrument: counter
+  unit: '{lookup}'
+  stability: development
+  brief: Profile-lookup reads by caller audience and hit/miss
+  attributes:
+  - ref: audience
+  - ref: found
+- id: metric.user.profile_updated.total
+  type: metric
+  metric_name: user.profile_updated.total
+  instrument: counter
+  unit: '{update}'
+  stability: development
+  brief: Profile-update attempts by outcome (successful write vs authz rejection)

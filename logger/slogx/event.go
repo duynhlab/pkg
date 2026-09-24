@@ -10,7 +10,7 @@ import (
 // record is still emitted and the mistake is visible where it happened
 // instead of vanishing.
 const (
-	keyEvent        = "event"
+	keyEvent        = KeyEvent // generated from the registry (semconv_gen.go)
 	keyEventInvalid = "event.invalid"
 	// conflictSuffix renames a caller's own "event" attribute: two keys of
 	// the same name would be last-wins in every consumer, which would let a
