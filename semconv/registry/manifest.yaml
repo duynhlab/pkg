@@ -1,0 +1,10 @@
+name: duynhlab
+description: >-
+  Platform-owned telemetry names for the duynhlab fleet: the attributes, metrics
+  and events the services and the shared package emit beyond the upstream
+  semantic conventions (ADR-076).
+schema_url: https://duynhlab.github.io/pkg/semconv/0.1.0
+dependencies:
+  - name: otel
+    schema_url: https://opentelemetry.io/schemas/1.41.0
+    registry_path: https://github.com/open-telemetry/semantic-conventions/archive/refs/tags/v1.41.0.zip[model]

@@ -1,0 +1,742 @@
+# Platform-owned attributes, one group per namespace. Every first segment
+# here is on the registered-namespace list (policies/namespaces.rego).
+groups:
+- id: registry.api
+  type: attribute_group
+  display_name: api attributes
+  brief: Platform attributes in the `api` namespace.
+  attributes:
+  - id: api.version
+    type: string
+    stability: development
+    brief: The public API version a span served.
+    examples:
+    - example
+- id: registry.availability
+  type: attribute_group
+  display_name: availability attributes
+  brief: Platform attributes in the `availability` namespace.
+  attributes:
+  - id: availability.fetch_failed
+    type: boolean
+    stability: development
+    brief: The fetch failed of availability on span, written by product.
+    examples:
+    - true
+  - id: availability.status
+    type: string
+    stability: development
+    brief: The status of availability on span, written by product.
+    examples:
+    - example
+- id: registry.cache
+  type: attribute_group
+  display_name: cache attributes
+  brief: Platform attributes in the `cache` namespace.
+  attributes:
+  - id: cache.error
+    type: string
+    stability: development
+    brief: The error of cache on log, written by product.
+    examples:
+    - example
+  - id: cache.hit
+    type: string
+    stability: development
+    brief: The hit of cache on log, written by product.
+    examples:
+    - example
+  - id: cache.invalidation_error
+    type: string
+    stability: development
+    brief: The invalidation error of cache on log, written by product.
+    examples:
+    - example
+  - id: cache.write_error
+    type: string
+    stability: development
+    brief: The write error of cache on log, written by product.
+    examples:
+    - example
+- id: registry.cart
+  type: attribute_group
+  display_name: cart attributes
+  brief: Platform attributes in the `cart` namespace.
+  attributes:
+  - id: cart.cleared
+    type: boolean
+    stability: development
+    brief: The cleared of cart on span, written by cart.
+    examples:
+    - true
+  - id: cart.count
+    type: string
+    stability: development
+    brief: The count of cart on log, written by cart.
+    examples:
+    - example
+- id: registry.checkout
+  type: attribute_group
+  display_name: checkout attributes
+  brief: Platform attributes in the `checkout` namespace.
+  attributes:
+  - id: checkout.session.id
+    type: string
+    stability: development
+    brief: The checkout session identifier (correlation only).
+    examples:
+    - example
+  - id: checkout.unknown_sku_ids
+    type: string
+    stability: development
+    brief: The unknown sku ids of checkout on log, written by checkout.
+    examples:
+    - example
+- id: registry.compensation
+  type: attribute_group
+  display_name: compensation attributes
+  brief: Platform attributes in the `compensation` namespace.
+  attributes:
+  - id: compensation.step
+    type: string
+    stability: development
+    brief: The saga compensation step an event reports.
+    examples:
+    - example
+- id: registry.discrepancy
+  type: attribute_group
+  display_name: discrepancy attributes
+  brief: Platform attributes in the `discrepancy` namespace.
+  attributes:
+  - id: discrepancy.class
+    type: string
+    stability: development
+    brief: The class of a reconciliation discrepancy.
+    examples:
+    - example
+- id: registry.downstream
+  type: attribute_group
+  display_name: downstream attributes
+  brief: Platform attributes in the `downstream` namespace.
+  attributes:
+  - id: downstream.service
+    type: string
+    stability: development
+    brief: The service of downstream on span, written by product.
+    examples:
+    - example
+- id: registry.email
+  type: attribute_group
+  display_name: email attributes
+  brief: Platform attributes in the `email` namespace.
+  attributes:
+  - id: email.replayed
+    type: boolean
+    stability: development
+    brief: The replayed of email on span, written by notification.
+    examples:
+    - true
+  - id: email.sent
+    type: boolean
+    stability: development
+    brief: The sent of email on span, written by notification.
+    examples:
+    - true
+- id: registry.estimate
+  type: attribute_group
+  display_name: estimate attributes
+  brief: Platform attributes in the `estimate` namespace.
+  attributes:
+  - id: estimate.cost
+    type: double
+    stability: development
+    brief: The cost of estimate on span, written by shipping.
+    examples:
+    - 1.5
+  - id: estimate.days
+    type: int
+    stability: development
+    brief: The days of estimate on span, written by shipping.
+    examples:
+    - 1
+  - id: estimate.weight
+    type: double
+    stability: development
+    brief: The weight of estimate on span, written by shipping.
+    examples:
+    - 1.5
+- id: registry.inventory
+  type: attribute_group
+  display_name: inventory attributes
+  brief: Platform attributes in the `inventory` namespace.
+  attributes:
+  - id: inventory.fetch_error
+    type: string
+    stability: development
+    brief: The fetch error of inventory on log, written by order.
+    examples:
+    - example
+  - id: inventory.reservation.ref
+    type: string
+    stability: development
+    brief: The inventory reservation reference (correlation only).
+    examples:
+    - example
+- id: registry.inventory_service
+  type: attribute_group
+  display_name: inventory_service attributes
+  brief: Platform attributes in the `inventory_service` namespace.
+  attributes:
+  - id: inventory_service.available
+    type: boolean
+    stability: development
+    brief: The available of inventory service on span, written by product.
+    examples:
+    - true
+- id: registry.item
+  type: attribute_group
+  display_name: item attributes
+  brief: Platform attributes in the `item` namespace.
+  attributes:
+  - id: item.added
+    type: boolean
+    stability: development
+    brief: The added of item on span, written by cart.
+    examples:
+    - true
+  - id: item.id
+    type: string
+    stability: development
+    brief: The id of item on log, written by cart.
+    examples:
+    - example
+  - id: item.removed
+    type: string
+    stability: development
+    brief: The removed of item on log, written by cart.
+    examples:
+    - example
+  - id: item.updated
+    type: string
+    stability: development
+    brief: The updated of item on log, written by cart.
+    examples:
+    - example
+- id: registry.items
+  type: attribute_group
+  display_name: items attributes
+  brief: Platform attributes in the `items` namespace.
+  attributes:
+  - id: items.count
+    type: int
+    stability: development
+    brief: The count of items on span, written by cart, checkout.
+    examples:
+    - 1
+  - id: items.price_changed
+    type: int
+    stability: development
+    brief: The price changed of items on span, written by checkout.
+    examples:
+    - 1
+- id: registry.notification
+  type: attribute_group
+  display_name: notification attributes
+  brief: Platform attributes in the `notification` namespace.
+  attributes:
+  - id: notification.found
+    type: string
+    stability: development
+    brief: The found of notification on log, written by notification.
+    examples:
+    - example
+  - id: notification.id
+    type: string
+    stability: development
+    brief: The notification identifier (correlation only).
+    examples:
+    - example
+- id: registry.notifications
+  type: attribute_group
+  display_name: notifications attributes
+  brief: Platform attributes in the `notifications` namespace.
+  attributes:
+  - id: notifications.count
+    type: int
+    stability: development
+    brief: The count of notifications on span, written by notification.
+    examples:
+    - 1
+- id: registry.order
+  type: attribute_group
+  display_name: order attributes
+  brief: Platform attributes in the `order` namespace.
+  attributes:
+  - id: order.created
+    type: boolean
+    stability: development
+    brief: The created of order on span, written by order.
+    examples:
+    - true
+  - id: order.epoch
+    type: string
+    stability: development
+    brief: The cancellation epoch of an order.
+    examples:
+    - example
+  - id: order.found
+    type: boolean
+    stability: development
+    brief: The found of order on span, written by order.
+    examples:
+    - true
+  - id: order.id
+    type: string
+    stability: development
+    brief: The order identifier (correlation only).
+    examples:
+    - example
+  - id: order.replayed
+    type: string
+    stability: development
+    brief: The replayed of order on log, written by order.
+    examples:
+    - example
+- id: registry.order_id
+  type: attribute_group
+  display_name: order_id attributes
+  brief: Platform attributes in the `order_id` namespace.
+  attributes:
+  - id: order_id.valid
+    type: string
+    stability: development
+    brief: The valid of order id on log, written by shipping.
+    examples:
+    - example
+- id: registry.orders
+  type: attribute_group
+  display_name: orders attributes
+  brief: Platform attributes in the `orders` namespace.
+  attributes:
+  - id: orders.count
+    type: int
+    stability: development
+    brief: The count of orders on span, written by order.
+    examples:
+    - 1
+- id: registry.payment
+  type: attribute_group
+  display_name: payment attributes
+  brief: Platform attributes in the `payment` namespace.
+  attributes:
+  - id: payment.fetch_error
+    type: string
+    stability: development
+    brief: The fetch error of payment on log, written by order.
+    examples:
+    - example
+  - id: payment.found
+    type: boolean
+    stability: development
+    brief: The found of payment on span, written by order.
+    examples:
+    - true
+  - id: payment.id
+    type: string
+    stability: development
+    brief: The payment identifier (correlation only).
+    examples:
+    - example
+  - id: payment.idempotency_key_id
+    type: string
+    stability: development
+    brief: The idempotency key id of payment on log, written by payment.
+    examples:
+    - example
+  - id: payment.operation
+    type: string
+    stability: development
+    brief: The operation of payment on log, written by payment.
+    examples:
+    - example
+  - id: payment.outcome_class
+    type: string
+    stability: development
+    brief: The outcome class of payment on log, written by payment.
+    examples:
+    - example
+  - id: payment.provider_id
+    type: string
+    stability: development
+    brief: The provider id of payment on log, written by payment.
+    examples:
+    - example
+- id: registry.pgx
+  type: attribute_group
+  display_name: pgx attributes
+  brief: Platform attributes in the `pgx` namespace.
+  attributes:
+  - id: pgx.operation.type
+    type: string
+    stability: development
+    brief: The operation type of pgx on metric, written by the fleet.
+    examples:
+    - example
+  - id: pgx.rows_affected
+    type: int
+    stability: development
+    brief: Rows affected by a Postgres statement, from otelpgx.
+    examples:
+    - 1
+- id: registry.processing
+  type: attribute_group
+  display_name: processing attributes
+  brief: Platform attributes in the `processing` namespace.
+  attributes:
+  - id: processing.fetch_error
+    type: string
+    stability: development
+    brief: The fetch error of processing on log, written by order.
+    examples:
+    - example
+- id: registry.product
+  type: attribute_group
+  display_name: product attributes
+  brief: Platform attributes in the `product` namespace.
+  attributes:
+  - id: product.created
+    type: string
+    stability: development
+    brief: The created of product on log, written by product.
+    examples:
+    - example
+  - id: product.found
+    type: boolean
+    stability: development
+    brief: The found of product on span, written by product.
+    examples:
+    - true
+  - id: product.id
+    type: string
+    stability: development
+    brief: The catalog product identifier (correlation only).
+    examples:
+    - example
+  - id: product.name
+    type: string
+    stability: development
+    brief: The name of product on log, written by product.
+    examples:
+    - example
+- id: registry.products
+  type: attribute_group
+  display_name: products attributes
+  brief: Platform attributes in the `products` namespace.
+  attributes:
+  - id: products.count
+    type: string
+    stability: development
+    brief: The count of products on log, written by product.
+    examples:
+    - example
+  - id: products.found
+    type: int
+    stability: development
+    brief: The found of products on span, written by product.
+    examples:
+    - 1
+  - id: products.requested
+    type: int
+    stability: development
+    brief: The requested of products on span, written by product.
+    examples:
+    - 1
+  - id: products.total
+    type: string
+    stability: development
+    brief: The total of products on log, written by product.
+    examples:
+    - example
+- id: registry.profile
+  type: attribute_group
+  display_name: profile attributes
+  brief: Platform attributes in the `profile` namespace.
+  attributes:
+  - id: profile.found
+    type: boolean
+    stability: development
+    brief: The found of profile on span, written by user.
+    examples:
+    - true
+  - id: profile.updated
+    type: string
+    stability: development
+    brief: The updated of profile on log, written by user.
+    examples:
+    - example
+- id: registry.pyroscope
+  type: attribute_group
+  display_name: pyroscope attributes
+  brief: Platform attributes in the `pyroscope` namespace.
+  attributes:
+  - id: pyroscope.profile.id
+    type: string
+    stability: development
+    brief: The CPU profile id otel-profiling-go stamps on a process root span.
+    examples:
+    - example
+- id: registry.quote
+  type: attribute_group
+  display_name: quote attributes
+  brief: Platform attributes in the `quote` namespace.
+  attributes:
+  - id: quote.eta_days
+    type: int
+    stability: development
+    brief: The eta days of quote on span, written by shipping.
+    examples:
+    - 1
+  - id: quote.fee_minor
+    type: int
+    stability: development
+    brief: The fee minor of quote on span, written by shipping.
+    examples:
+    - 1
+  - id: quote.method
+    type: string
+    stability: development
+    brief: The method of quote on span, written by shipping.
+    examples:
+    - example
+  - id: quote.region
+    type: string
+    stability: development
+    brief: The region of quote on span, written by shipping.
+    examples:
+    - example
+- id: registry.reconciliation
+  type: attribute_group
+  display_name: reconciliation attributes
+  brief: Platform attributes in the `reconciliation` namespace.
+  attributes:
+  - id: reconciliation.run_id
+    type: string
+    stability: development
+    brief: The reconciliation run identifier (correlation only).
+    examples:
+    - example
+- id: registry.refund
+  type: attribute_group
+  display_name: refund attributes
+  brief: Platform attributes in the `refund` namespace.
+  attributes:
+  - id: refund.id
+    type: string
+    stability: development
+    brief: The refund identifier (correlation only).
+    examples:
+    - example
+- id: registry.request
+  type: attribute_group
+  display_name: request attributes
+  brief: Platform attributes in the `request` namespace.
+  attributes:
+  - id: request.valid
+    type: boolean
+    stability: development
+    brief: The valid of request on span, written by cart, notification, product, review, user.
+    examples:
+    - true
+- id: registry.result
+  type: attribute_group
+  display_name: result attributes
+  brief: Platform attributes in the `result` namespace.
+  attributes:
+  - id: result.count
+    type: string
+    stability: development
+    brief: The count of result on log, written by notification.
+    examples:
+    - example
+- id: registry.review
+  type: attribute_group
+  display_name: review attributes
+  brief: Platform attributes in the `review` namespace.
+  attributes:
+  - id: review.created
+    type: string
+    stability: development
+    brief: The created of review on log, written by review.
+    examples:
+    - example
+  - id: review.id
+    type: string
+    stability: development
+    brief: The review identifier (correlation only).
+    examples:
+    - example
+- id: registry.review_service
+  type: attribute_group
+  display_name: review_service attributes
+  brief: Platform attributes in the `review_service` namespace.
+  attributes:
+  - id: review_service.available
+    type: boolean
+    stability: development
+    brief: The available of review service on span, written by product.
+    examples:
+    - true
+- id: registry.reviews
+  type: attribute_group
+  display_name: reviews attributes
+  brief: Platform attributes in the `reviews` namespace.
+  attributes:
+  - id: reviews.average_rating
+    type: double
+    stability: development
+    brief: The average rating of reviews on span, written by product.
+    examples:
+    - 1.5
+  - id: reviews.count
+    type: int
+    stability: development
+    brief: The count of reviews on span, written by product, review.
+    examples:
+    - 1
+  - id: reviews.fetch_failed
+    type: boolean
+    stability: development
+    brief: The fetch failed of reviews on span, written by product.
+    examples:
+    - true
+  - id: reviews.total
+    type: int
+    stability: development
+    brief: The total of reviews on span, written by product.
+    examples:
+    - 1
+- id: registry.session
+  type: attribute_group
+  display_name: session attributes
+  brief: Platform attributes in the `session` namespace.
+  attributes:
+  - id: session.reused
+    type: string
+    stability: development
+    brief: The reused of session on log, written by checkout.
+    examples:
+    - example
+- id: registry.shipment
+  type: attribute_group
+  display_name: shipment attributes
+  brief: Platform attributes in the `shipment` namespace.
+  attributes:
+  - id: shipment.carrier
+    type: string
+    stability: development
+    brief: The carrier of shipment on span, written by shipping.
+    examples:
+    - example
+  - id: shipment.fetch_error
+    type: string
+    stability: development
+    brief: The fetch error of shipment on log, written by order.
+    examples:
+    - example
+  - id: shipment.found
+    type: boolean
+    stability: development
+    brief: The found of shipment on span, written by order, shipping.
+    examples:
+    - true
+  - id: shipment.id
+    type: int
+    stability: development
+    brief: The shipment identifier (correlation only).
+    examples:
+    - 1
+  - id: shipment.status
+    type: string
+    stability: development
+    brief: The status of shipment on span, written by order, shipping.
+    examples:
+    - example
+  - id: shipment.tracking_number
+    type: string
+    stability: development
+    brief: The tracking number of shipment on span, written by shipping.
+    examples:
+    - example
+- id: registry.sms
+  type: attribute_group
+  display_name: sms attributes
+  brief: Platform attributes in the `sms` namespace.
+  attributes:
+  - id: sms.sent
+    type: string
+    stability: development
+    brief: The sent of sms on log, written by notification.
+    examples:
+    - example
+- id: registry.temporal
+  type: attribute_group
+  display_name: temporal attributes
+  brief: Platform attributes in the `temporal` namespace.
+  attributes:
+  - id: temporal.run_status
+    type: string
+    stability: development
+    brief: 'How a Temporal run ended: failed, terminated or timed_out.'
+    examples:
+    - example
+  - id: temporal.task_queue
+    type: string
+    stability: development
+    brief: The Temporal task queue a started workflow was sent to.
+    examples:
+    - example
+  - id: temporal.workflow.type
+    type: string
+    stability: development
+    brief: The Temporal workflow type a lifecycle event names.
+    examples:
+    - example
+- id: registry.tracking
+  type: attribute_group
+  display_name: tracking attributes
+  brief: Platform attributes in the `tracking` namespace.
+  attributes:
+  - id: tracking.id
+    type: string
+    stability: development
+    brief: The id of tracking on span, written by shipping.
+    examples:
+    - example
+  - id: tracking.number
+    type: string
+    stability: development
+    brief: The number of tracking on span, written by shipping.
+    examples:
+    - example
+- id: registry.user
+  type: attribute_group
+  display_name: user attributes
+  brief: Platform attributes in the `user` namespace.
+  attributes:
+  - id: user.found
+    type: string
+    stability: development
+    brief: The found of user on log, written by user.
+    examples:
+    - example
+- id: registry.webhook
+  type: attribute_group
+  display_name: webhook attributes
+  brief: Platform attributes in the `webhook` namespace.
+  attributes:
+  - id: webhook.event_id
+    type: string
+    stability: development
+    brief: The provider webhook event identifier (correlation only).
+    examples:
+    - example

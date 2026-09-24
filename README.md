@@ -43,6 +43,10 @@ Modules are layered; lower layers never import higher ones (see
 | [`migratex`](./migratex) | 2 | Embedded SQL migrations runner (golang-migrate). |
 | [`temporalx`](./temporalx) | 2 | Temporal client/worker bootstrap with OTel tracing and Worker Deployment Versioning. |
 
+**Registry:** [`semconv/`](./semconv) declares every platform-owned attribute, metric
+and event against semantic conventions v1.41.0 and generates the constants `logger/slogx`
+and `temporalx` use (ADR-076); `make semconv-check` runs its policies.
+
 **Retired:** `logger/zapx` (last tag `v0.36.1`), `logger/zerolog` and
 `logger/clog` (last tag `v0.36.2` each) left the tree once every service had
 moved to `logger/slogx`. Their published tags still resolve through the module

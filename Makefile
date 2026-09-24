@@ -27,7 +27,30 @@ GO_TEST_ARGS ?= -race
 # 1-indexed. `make test-chunk CHUNK=2/4` runs the second quarter.
 CHUNK ?= 1/1
 
-.PHONY: all modules build tidy fmt vet lint test test-chunk coverage generate-proto proto-breaking
+.PHONY: all modules build tidy fmt vet lint test test-chunk coverage generate-proto proto-breaking semconv-check semconv-generate semconv-generated-check semconv-diff
+
+# ---------------------------------------------------------------------------
+# Platform semantic-convention registry (semconv/, ADR-076). Weaver runs from
+# its image so no local install is needed; the version is pinned here and in
+# homelab's compose.weaver.yaml — bump both together.
+WEAVER_IMAGE ?= otel/weaver:v0.26.1
+WEAVER := docker run --rm -u $$(id -u):$$(id -g) -e HOME=/tmp -v $(CURDIR):/repo -w /repo $(WEAVER_IMAGE)
+
+semconv-check: ## Resolve the registry against upstream v1.41.0 and run the Rego policies
+	$(WEAVER) registry check -r semconv/registry -p semconv/policies
+
+semconv-generate: ## Regenerate the Go constants the modules import and the docs table from the registry
+	$(WEAVER) registry generate -r semconv/registry -t semconv/templates go .
+	$(WEAVER) registry generate -r semconv/registry -t semconv/templates markdown .
+	gofmt -l logger/slogx/semconv_gen.go temporalx/semconv_gen.go
+
+semconv-generated-check: semconv-generate ## Fail when a generated file was hand-edited or is stale
+	git diff --exit-code -- logger/slogx/semconv_gen.go temporalx/semconv_gen.go semconv/docs/event-catalog.md
+
+semconv-diff: ## Report renames/removals against the registry at BASE (a git ref), e.g. make semconv-diff BASE=main
+	rm -rf .semconv-base && mkdir -p .semconv-base && git archive $(BASE) semconv/registry | tar -x -C .semconv-base
+	$(WEAVER) registry diff -r semconv/registry --baseline-registry .semconv-base/semconv/registry
+	rm -rf .semconv-base
 
 all: ## Run tidy, fmt, vet and lint for all modules
 	$(MAKE) $(addprefix all-,$(MODULES))

@@ -1,0 +1,21 @@
+# Go constants for the shared-package modules that own platform names. Each
+# template filters the resolved registry down to what one module emits and
+# writes straight into that module, so the module needs no cross-module import.
+text_maps: {}
+templates:
+  - template: slogx.go.j2
+    filter: >
+      {
+        events: [semconv_events[] | select(.name | startswith("process."))],
+        attributes: [semconv_attributes[] | select(.name == "event" or .name == "component" or .name == "outcome")]
+      }
+    application_mode: single
+    file_name: logger/slogx/semconv_gen.go
+  - template: temporalx.go.j2
+    filter: >
+      {
+        events: [semconv_events[] | select(.name | startswith("temporal."))],
+        attributes: [semconv_attributes[] | select(.name | startswith("temporal."))]
+      }
+    application_mode: single
+    file_name: temporalx/semconv_gen.go

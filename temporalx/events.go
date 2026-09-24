@@ -15,8 +15,8 @@ import (
 // log/slog only, so it writes the catalog name under the same "event" key the
 // logging facade's Event uses; the facade passes it through unchanged.
 const (
-	eventWorkflowStarted = "temporal.workflow.started"
-	eventWorkflowFailed  = "temporal.workflow.failed"
+	eventWorkflowStarted = EventTemporalWorkflowStarted // generated from the registry (semconv_gen.go)
+	eventWorkflowFailed  = EventTemporalWorkflowFailed
 )
 
 // startEvents emits temporal.workflow.started from the CLIENT, never from
@@ -49,8 +49,8 @@ func (o *startEventsOutbound) ExecuteWorkflow(ctx context.Context, in *intercept
 		in.Options.WorkflowIDConflictPolicy != enumspb.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING {
 		o.log.LogAttrs(ctx, slog.LevelInfo, "workflow started",
 			slog.String("event", eventWorkflowStarted),
-			slog.String("temporal.workflow.type", in.WorkflowType),
-			slog.String("temporal.task_queue", in.Options.TaskQueue))
+			slog.String(KeyTemporalWorkflowType, in.WorkflowType),
+			slog.String(KeyTemporalTaskQueue, in.Options.TaskQueue))
 	}
 	return run, err
 }
@@ -88,8 +88,8 @@ func WorkflowFailed(ctx context.Context, l *slog.Logger, workflowType string, st
 	r := slog.NewRecord(time.Now(), slog.LevelError, "workflow failed", pcs[0])
 	r.AddAttrs(
 		slog.String("event", eventWorkflowFailed),
-		slog.String("temporal.workflow.type", workflowType),
-		slog.String("temporal.run_status", runStatus),
+		slog.String(KeyTemporalWorkflowType, workflowType),
+		slog.String(KeyTemporalRunStatus, runStatus),
 	)
 	r.AddAttrs(attrs...)
 	_ = l.Handler().Handle(ctx, r)

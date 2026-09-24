@@ -38,6 +38,16 @@ jobs:
           # fork PRs). The lint/format/breaking checks still gate the PR.
           pr_comment: false
 
+  # Platform semantic-convention registry (ADR-076): resolves semconv/ against
+  # the pinned upstream conventions, runs the Rego namespace/unit/stability
+  # policies, and fails when the generated Go constants drifted from it.
+  semconv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: make semconv-check
+      - run: make semconv-generated-check
+
   sonar:
     needs: go-check
     uses: duynhlab/gha-workflows/.github/workflows/sonarqube.yml@5179402dc1ae410e8964c85926b830481df87360 # main # main

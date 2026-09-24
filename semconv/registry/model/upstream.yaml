@@ -1,0 +1,57 @@
+# Upstream reuse (ADR-076 "upstream by import"): the metrics are imported and
+# the attributes referenced from semantic conventions v1.41.0, never redefined.
+imports:
+  metrics:
+  - db.client.operation.duration
+  - go.config.gogc
+  - go.goroutine.count
+  - go.memory.allocated
+  - go.memory.allocations
+  - go.memory.gc.goal
+  - go.memory.used
+  - go.processor.limit
+  - http.client.request.body.size
+  - http.client.request.duration
+  - http.server.request.body.size
+  - http.server.request.duration
+  - http.server.response.body.size
+  - rpc.client.call.duration
+  - rpc.server.call.duration
+groups:
+- id: registry.platform.upstream_reuse
+  type: attribute_group
+  display_name: Upstream attributes in use
+  brief: Attributes from the pinned semantic conventions (v1.41.0) that the fleet writes. Referenced,
+    never redefined.
+  attributes:
+  - ref: code.file.path
+  - ref: code.function.name
+  - ref: code.line.number
+  - ref: db.client.connection.pool.name
+  - ref: db.operation.name
+  - ref: db.query.text
+  - ref: db.system.name
+  - ref: deployment.environment.name
+  - ref: error.type
+  - ref: exception.message
+  - ref: exception.type
+  - ref: go.memory.type
+  - ref: http.request.body.size
+  - ref: http.request.method
+  - ref: http.response.body.size
+  - ref: http.response.status_code
+  - ref: http.route
+  - ref: network.protocol.name
+  - ref: network.protocol.version
+  - ref: rpc.method
+  - ref: rpc.response.status_code
+  - ref: rpc.system.name
+  - ref: server.address
+  - ref: server.port
+  - ref: service.name
+  - ref: telemetry.sdk.language
+  - ref: telemetry.sdk.name
+  - ref: telemetry.sdk.version
+  - ref: url.full
+  - ref: url.path
+  - ref: url.scheme

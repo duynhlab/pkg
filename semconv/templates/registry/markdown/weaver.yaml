@@ -1,0 +1,10 @@
+# The event catalog as one Markdown table, for docs that embed it. homelab's
+# docs/api/logs.md carries this block between markers and regenerates it from
+# the registry at the pinned pkg ref, so prose and registry cannot disagree.
+text_maps: {}
+templates:
+  - template: event-catalog.md.j2
+    filter: >
+      { events: [semconv_events[]] }
+    application_mode: single
+    file_name: semconv/docs/event-catalog.md

@@ -1,0 +1,159 @@
+# The frozen event catalog (RFC-0031 Task 0.2). A name is added here before
+# any service emits it.
+groups:
+- id: event.order.created
+  type: event
+  name: order.created
+  stability: development
+  brief: 'Emitted when: order row committed as `pending`.'
+  attributes:
+  - ref: order.id
+- id: event.order.confirmed
+  type: event
+  name: order.confirmed
+  stability: development
+  brief: 'Emitted when: saga moves the order to `confirmed`.'
+  attributes:
+  - ref: order.id
+- id: event.order.failed
+  type: event
+  name: order.failed
+  stability: development
+  brief: 'Emitted when: saga ends the order `failed`.'
+  attributes:
+  - ref: order.id
+  - ref: reason
+  - ref: outcome
+- id: event.order.cancelled
+  type: event
+  name: order.cancelled
+  stability: development
+  brief: 'Emitted when: cancellation workflow reaches `cancelled`.'
+  attributes:
+  - ref: order.id
+  - ref: order.epoch
+- id: event.order.manual_review.entered
+  type: event
+  name: order.manual_review.entered
+  stability: development
+  brief: 'Emitted when: order parked for a human decision.'
+  attributes:
+  - ref: order.id
+  - ref: reason
+- id: event.payment.authorization.completed
+  type: event
+  name: payment.authorization.completed
+  stability: development
+  brief: 'Emitted when: authorize decision stored.'
+  attributes:
+  - ref: payment.id
+  - ref: order.id
+  - ref: outcome
+- id: event.payment.capture.completed
+  type: event
+  name: payment.capture.completed
+  stability: development
+  brief: 'Emitted when: capture decision stored.'
+  attributes:
+  - ref: payment.id
+  - ref: outcome
+- id: event.payment.refund.completed
+  type: event
+  name: payment.refund.completed
+  stability: development
+  brief: 'Emitted when: refund settled.'
+  attributes:
+  - ref: payment.id
+  - ref: refund.id
+  - ref: outcome
+- id: event.payment.reconciliation.discrepancy.detected
+  type: event
+  name: payment.reconciliation.discrepancy.detected
+  stability: development
+  brief: 'Emitted when: reconciliation run finds a mismatch.'
+  attributes:
+  - ref: reconciliation.run_id
+  - ref: discrepancy.class
+- id: event.checkout.session.confirmed
+  type: event
+  name: checkout.session.confirmed
+  stability: development
+  brief: 'Emitted when: session handed to order.'
+  attributes:
+  - ref: checkout.session.id
+  - ref: order.id
+- id: event.checkout.session.requoted
+  type: event
+  name: checkout.session.requoted
+  stability: development
+  brief: 'Emitted when: confirm sent the buyer back to requote.'
+  attributes:
+  - ref: checkout.session.id
+  - ref: reason
+- id: event.checkout.session.expired
+  type: event
+  name: checkout.session.expired
+  stability: development
+  brief: 'Emitted when: session expired.'
+  attributes:
+  - ref: checkout.session.id
+  - ref: reason
+- id: event.inventory.reservation.rejected
+  type: event
+  name: inventory.reservation.rejected
+  stability: development
+  brief: 'Emitted when: reserve refused.'
+  attributes:
+  - ref: inventory.reservation.ref
+  - ref: outcome
+- id: event.order.retry.exhausted
+  type: event
+  name: order.retry.exhausted
+  stability: development
+  brief: 'Emitted when: a bounded retry gives up and the order is escalated.'
+  attributes:
+  - ref: order.id
+  - ref: operation
+  - ref: error.type
+  - ref: attempts
+- id: event.order.compensation.completed
+  type: event
+  name: order.compensation.completed
+  stability: development
+  brief: 'Emitted when: one compensation step finishes.'
+  attributes:
+  - ref: order.id
+  - ref: compensation.step
+  - ref: outcome
+  - ref: error.type
+- id: event.temporal.workflow.started
+  type: event
+  name: temporal.workflow.started
+  stability: development
+  brief: 'Emitted when: the client starts a workflow.'
+  attributes:
+  - ref: temporal.workflow.type
+  - ref: temporal.task_queue
+- id: event.temporal.workflow.failed
+  type: event
+  name: temporal.workflow.failed
+  stability: development
+  brief: 'Emitted when: a run ends failed, terminated or timed out.'
+  attributes:
+  - ref: temporal.workflow.type
+  - ref: temporal.run_status
+- id: event.process.started
+  type: event
+  name: process.started
+  stability: development
+  brief: 'Emitted when: entry point ready to serve.'
+  attributes:
+  - ref: component
+- id: event.process.stopped
+  type: event
+  name: process.stopped
+  stability: development
+  brief: 'Emitted when: entry point finished shutting down.'
+  attributes:
+  - ref: component
+  - ref: outcome
