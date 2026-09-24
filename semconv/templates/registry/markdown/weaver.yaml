@@ -1,6 +1,7 @@
-# The event catalog as one Markdown table, for docs that embed it. homelab's
-# docs/api/logs.md carries this block between markers and regenerates it from
-# the registry at the pinned pkg ref, so prose and registry cannot disagree.
+# The event catalog as one Markdown table. homelab's docs/api/logs.md keeps a
+# richer hand-written copy (enum values, links) and checks it against this file
+# at the pinned pkg ref (make semconv-catalog-check), so prose and registry
+# cannot disagree on names, classes, attributes or owners.
 text_maps: {}
 templates:
   - template: event-catalog.md.j2
