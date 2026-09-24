@@ -2,11 +2,14 @@ package temporalx
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"reflect"
 
 	"go.opentelemetry.io/otel/trace"
 	"go.temporal.io/sdk/client"
 	sdklog "go.temporal.io/sdk/log"
+	"go.temporal.io/sdk/temporal"
 )
 
 // DialOption customizes the client options Dial builds. Options are additive
@@ -66,7 +69,50 @@ func (h spanFromAttrs) Handle(ctx context.Context, r slog.Record) error {
 	if h.sc.IsValid() && !trace.SpanContextFromContext(ctx).IsValid() {
 		ctx = trace.ContextWithSpanContext(ctx, h.sc)
 	}
-	return h.next.Handle(ctx, r)
+	return h.next.Handle(ctx, withErrorShape(r))
+}
+
+// withErrorShape rewrites the SDK's own "Error" attribute (a raw error, on its
+// poll-failure and activity-error lines) into the platform's error shape:
+// error.type — the bounded application-error type when there is one, else the
+// Go type — and error.message. A raw error string under a key the facade does
+// not know would otherwise reach both sinks untouched. Records without it pass
+// through unchanged.
+func withErrorShape(r slog.Record) slog.Record {
+	found := false
+	r.Attrs(func(a slog.Attr) bool {
+		if a.Key == "Error" {
+			found = true
+			return false
+		}
+		return true
+	})
+	if !found {
+		return r
+	}
+	out := slog.NewRecord(r.Time, r.Level, r.Message, r.PC)
+	r.Attrs(func(a slog.Attr) bool {
+		if a.Key != "Error" {
+			out.AddAttrs(a)
+			return true
+		}
+		err, ok := a.Value.Any().(error)
+		if !ok || err == nil {
+			out.AddAttrs(slog.String("error.message", a.Value.String()))
+			return true
+		}
+		out.AddAttrs(slog.String("error.type", sdkErrorType(err)), slog.String("error.message", err.Error()))
+		return true
+	})
+	return out
+}
+
+func sdkErrorType(err error) string {
+	var appErr *temporal.ApplicationError
+	if errors.As(err, &appErr) && appErr.Type() != "" {
+		return appErr.Type()
+	}
+	return reflect.TypeOf(err).String()
 }
 
 func (h spanFromAttrs) WithAttrs(attrs []slog.Attr) slog.Handler {

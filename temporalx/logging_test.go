@@ -2,6 +2,7 @@ package temporalx
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"sync"
@@ -11,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.temporal.io/sdk/client"
 	sdklog "go.temporal.io/sdk/log"
+	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
@@ -169,5 +171,28 @@ func TestWithLogger_NilLoggerFailsDial(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "nil DialOption") {
 		t.Errorf("error %q does not mention the nil DialOption", err.Error())
+	}
+}
+
+// The SDK logs its own failures under "Error" with a raw error value; the
+// handler rewrites it into error.type + error.message so nothing unknown to the
+// facade carries raw error text.
+func TestWithLogger_RewritesTheSDKErrorKey(t *testing.T) {
+	var buf strings.Builder
+	var o client.Options
+	WithLogger(slog.New(slog.NewJSONHandler(&buf, nil)))(&o)
+	o.Logger.Warn("Activity error.", "Error",
+		temporal.NewNonRetryableApplicationError("payment not authorized", "PaymentDeclined", nil), "ActivityType", "AuthorizePayment")
+	o.Logger.Warn("Failed to poll for task.", "Error", errors.New("connection refused"))
+	o.Logger.Info("no error here", "Attempt", 1)
+	o.Logger.Warn("stringly error", "Error", "plain text")
+	out := buf.String()
+	for _, want := range []string{`"error.type":"PaymentDeclined"`, `"error.type":"*errors.errorString"`, `"error.message":"connection refused"`, `"ActivityType":"AuthorizePayment"`, `"Attempt":1`, `"error.message":"plain text"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %s in %s", want, out)
+		}
+	}
+	if strings.Contains(out, `"Error":`) {
+		t.Errorf("the raw Error key must not survive: %s", out)
 	}
 }
