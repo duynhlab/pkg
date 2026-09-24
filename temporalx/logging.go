@@ -74,10 +74,10 @@ func (h spanFromAttrs) Handle(ctx context.Context, r slog.Record) error {
 
 // withErrorShape rewrites the SDK's own "Error" attribute (a raw error, on its
 // poll-failure and activity-error lines) into the platform's error shape:
-// error.type and error.message, the keys slogx.Err writes. The message stays an
+// error.type and exception.message, the keys slogx.Err writes. The message stays an
 // error value, so the facade's redactor still stringifies it — under its own
 // recover and typed-nil guard — and bounds it. A non-error value under "Error"
-// becomes error.message alone. Records without the key pass through unchanged.
+// becomes exception.message alone. Records without the key pass through unchanged.
 func withErrorShape(r slog.Record) slog.Record {
 	found := false
 	r.Attrs(func(a slog.Attr) bool {
@@ -98,7 +98,7 @@ func withErrorShape(r slog.Record) slog.Record {
 	return out
 }
 
-// errorShaped maps one attribute: "Error" becomes error.type + error.message,
+// errorShaped maps one attribute: "Error" becomes error.type + exception.message,
 // anything else is returned as it is.
 func errorShaped(a slog.Attr) []slog.Attr {
 	if a.Key != "Error" {
@@ -106,9 +106,9 @@ func errorShaped(a slog.Attr) []slog.Attr {
 	}
 	err, ok := a.Value.Any().(error)
 	if !ok || err == nil {
-		return []slog.Attr{slog.Any("error.message", a.Value.Any())}
+		return []slog.Attr{slog.Any("exception.message", a.Value.Any())}
 	}
-	return []slog.Attr{slog.String("error.type", sdkErrorType(err)), slog.Any("error.message", err)}
+	return []slog.Attr{slog.String("error.type", sdkErrorType(err)), slog.Any("exception.message", err)}
 }
 
 // sdkErrorType names an error the way slogx.ErrorType does — pointer dropped,

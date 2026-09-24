@@ -16,7 +16,7 @@ does change shape — the error, see the table — and the rest is the call site
 |---|---|---|
 | Construction | `zapx.New(os.Getenv("LOG_LEVEL"))` + `obsx.ZapCore` for the OTLP side | `slogx.New(slogx.Config{Level: os.Getenv("LOG_LEVEL"), Flush: obs.ForceFlush})` — both sinks |
 | Call | `log.Info("msg", zap.String("k", v))` | `log.Info(ctx, "msg", slog.String("k", v))` |
-| Errors | `zap.Error(err)` → `"error": "<text>"` | `slogx.Err(err)` → `"error.type"` + `"error.message"` |
+| Errors | `zap.Error(err)` → `"error": "<text>"` | `slogx.Err(err)` → `"error.type"` + `"exception.message"` |
 | Trace correlation | `obsx.TraceContext(ctx)` passed as a field | automatic — the context is the first argument |
 | Redaction | per-adapter, partial | mandatory, before both sinks |
 | Named records | none | `log.Event(ctx, level, "order.confirmed", "…")` |
@@ -27,10 +27,13 @@ The envelope keys (`timestamp`, `level`, `message`, `caller`, `trace_id`,
 
 **The one breaking query change:** `zap.Error(err)` wrote a single string
 field named `error`. `slogx.Err(err)` writes two flat fields, `error.type`
-(the Go type, a stable low-cardinality label) and `error.message` (the text,
-redacted and bounded). Anything matching `error` as a string — a VictoriaLogs
-filter, a Grafana panel, an alert expression — must move to `error.message`
-for the text or, better, to `error.type` for the classification. Grep the
+(the Go type, a stable low-cardinality label) and `exception.message` (the
+text, redacted and bounded). Anything matching `error` as a string — a
+VictoriaLogs filter, a Grafana panel, an alert expression — must move to
+`exception.message` for the text or, better, to `error.type` for the
+classification. (`logger/slogx` v0.1.0–v0.2.0 wrote the text as
+`error.message`; v0.3.0 moved it to `exception.message` because semantic
+conventions v1.41 deprecated `error.message`.) Grep the
 dashboards and rules in `homelab` before the first service cuts over.
 
 ## Before you start

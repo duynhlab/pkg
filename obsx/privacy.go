@@ -17,6 +17,8 @@ var deniedSpanKeys = map[attribute.Key]struct{}{
 	"network.peer.address": {},
 	"network.peer.port":    {},
 	"user_agent.original":  {},
+	// A DSN is deny-class whatever it holds; redisotel still writes it.
+	"db.connection_string": {},
 }
 
 // privacyExporter removes deniedSpanKeys from span and span-event attributes

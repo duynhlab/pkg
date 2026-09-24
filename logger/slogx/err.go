@@ -12,9 +12,14 @@ import (
 // (`LogAttributes['error.type']`), a group would arrive there as one JSON
 // blob under `error`, and `error.type` is also the key the matching span
 // carries, so log and span correlate on the same name.
+//
+// The text goes under exception.message, the stable upstream key for the
+// message of an error a record reports: semantic conventions v1.41 deprecated
+// error.message ("use a domain-specific attribute"), and the platform's
+// registry check treats a deprecated key as a violation.
 const (
 	keyErrorType    = "error.type"
-	keyErrorMessage = "error.message"
+	keyErrorMessage = "exception.message"
 )
 
 // Err is the one shape for an error on a record: the zap.Error(err) of this

@@ -176,7 +176,7 @@ func TestWithLogger_NilLoggerFailsDial(t *testing.T) {
 }
 
 // The SDK logs its own failures under "Error" with a raw error value; the
-// handler rewrites it into error.type + error.message so nothing unknown to the
+// handler rewrites it into error.type + exception.message so nothing unknown to the
 // facade carries raw error text.
 func TestWithLogger_RewritesTheSDKErrorKey(t *testing.T) {
 	var buf strings.Builder
@@ -188,7 +188,7 @@ func TestWithLogger_RewritesTheSDKErrorKey(t *testing.T) {
 	o.Logger.Info("no error here", "Attempt", 1)
 	o.Logger.Warn("stringly error", "Error", "plain text")
 	out := buf.String()
-	for _, want := range []string{`"error.type":"PaymentDeclined"`, `"error.type":"errors.errorString"`, `"error.message":"connection refused"`, `"ActivityType":"AuthorizePayment"`, `"Attempt":1`, `"error.message":"plain text"`} {
+	for _, want := range []string{`"error.type":"PaymentDeclined"`, `"error.type":"errors.errorString"`, `"exception.message":"connection refused"`, `"ActivityType":"AuthorizePayment"`, `"Attempt":1`, `"exception.message":"plain text"`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %s in %s", want, out)
 		}
@@ -246,7 +246,7 @@ func TestWithLogger_BoundErrorAndRecordShape(t *testing.T) {
 	r := h.recs[1]
 	var keys []string
 	r.Attrs(func(a slog.Attr) bool { keys = append(keys, a.Key); return true })
-	if got := strings.Join(keys, ","); got != "b,error.type,error.message,c" || r.Level != slog.LevelError || r.Message != "second" || r.PC == 0 {
+	if got := strings.Join(keys, ","); got != "b,error.type,exception.message,c" || r.Level != slog.LevelError || r.Message != "second" || r.PC == 0 {
 		t.Errorf("record = %v %q pc=%d keys=%s", r.Level, r.Message, r.PC, got)
 	}
 }

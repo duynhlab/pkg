@@ -45,8 +45,8 @@ func TestErr_ShapeOnBothSinks(t *testing.T) {
 	if std["error.type"] != "slogx_test.notFound" {
 		t.Errorf("the stdlib wrappers must be unwrapped: %v", std["error.type"])
 	}
-	if std["error.message"] != "fetch: db: order 8 not found" {
-		t.Errorf("message: %v", std["error.message"])
+	if std["exception.message"] != "fetch: db: order 8 not found" {
+		t.Errorf("message: %v", std["exception.message"])
 	}
 	if _, nested := std["error"]; nested {
 		t.Errorf("the keys must be flat, not a nested object: %v", std)
@@ -58,7 +58,7 @@ func TestErr_ShapeOnBothSinks(t *testing.T) {
 		switch string(kv.Key) {
 		case "error.type":
 			gotType = kv.Value.Type() == attribute.STRING && kv.Value.AsString() == "slogx_test.notFound"
-		case "error.message":
+		case "exception.message":
 			gotMsg = kv.Value.Type() == attribute.STRING
 		}
 		return true
@@ -92,8 +92,8 @@ func TestErr_MessageIsRedactedAndNilIsFree(t *testing.T) {
 	// An Error() that panics is caught here, not in the caller's goroutine.
 	buf.Reset()
 	lg.Error(context.Background(), "x", slogx.Err(boomErr{}))
-	if std = decode(t, buf); !strings.Contains(std["error.message"].(string), "panics") {
-		t.Errorf("panicking Error(): %v", std["error.message"])
+	if std = decode(t, buf); !strings.Contains(std["exception.message"].(string), "panics") {
+		t.Errorf("panicking Error(): %v", std["exception.message"])
 	}
 }
 
@@ -151,7 +151,7 @@ func TestErr_IsUsableFromABuffer(t *testing.T) {
 	if err := json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &m); err != nil {
 		t.Fatalf("not JSON: %v", err)
 	}
-	if m["error.message"] != "boom" {
+	if m["exception.message"] != "boom" {
 		t.Errorf("%v", m)
 	}
 }
