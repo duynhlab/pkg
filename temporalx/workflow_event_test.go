@@ -2,6 +2,7 @@ package temporalx
 
 import (
 	"log/slog"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -55,6 +56,9 @@ func TestWorkflowEvent_LiveOnceReplayNever(t *testing.T) {
 		attrOf(r, "order.id") != "8" || r.Level != slog.LevelInfo {
 		t.Errorf("event = %v", r)
 	}
+	if f, _ := runtime.CallersFrames([]uintptr{ev[0].PC}).Next(); !strings.HasSuffix(f.File, "workflow_event_test.go") {
+		t.Errorf("source = %s:%d, want the calling workflow, not temporalx", f.File, f.Line)
+	}
 
 	replayed := &capture{}
 	before := eventRuns.Load()
@@ -72,18 +76,25 @@ func TestWorkflowEvent_LiveOnceReplayNever(t *testing.T) {
 }
 
 func TestWorkflowEvent_LevelsAndGrammar(t *testing.T) {
+	exactly64 := "a." + strings.Repeat("b", 62)
 	cases := []struct {
 		name  string
 		level slog.Level
 		ev    string
 		key   string
+		value string
 		want  slog.Level
 	}{
-		{"error", slog.LevelError, "order.retry.exhausted", "event", slog.LevelError},
-		{"warn", slog.LevelWarn, "order.compensation.completed", "event", slog.LevelWarn},
-		{"debug", slog.LevelDebug, "order.debug_probe", "event", slog.LevelDebug},
-		{"bad grammar", slog.LevelInfo, "Order Failed", "event.invalid", slog.LevelInfo},
-		{"too long", slog.LevelInfo, "a." + strings.Repeat("b", 80), "event.invalid", slog.LevelInfo},
+		{"error", slog.LevelError, "order.retry.exhausted", "event", "order.retry.exhausted", slog.LevelError},
+		{"warn", slog.LevelWarn, "order.compensation.completed", "event", "order.compensation.completed", slog.LevelWarn},
+		{"debug", slog.LevelDebug, "order.debug_probe", "event", "order.debug_probe", slog.LevelDebug},
+		{"custom level rounds down", slog.LevelWarn + 2, "order.failed", "event", "order.failed", slog.LevelWarn},
+		{"exactly 64 bytes is valid", slog.LevelInfo, exactly64, "event", exactly64, slog.LevelInfo},
+		{"65 bytes is invalid", slog.LevelInfo, exactly64 + "c", "event.invalid", exactly64 + "…(truncated)", slog.LevelInfo},
+		{"cut on a rune boundary", slog.LevelInfo, strings.Repeat("a", 63) + "é", "event.invalid", strings.Repeat("a", 63) + "…(truncated)", slog.LevelInfo},
+		{"bad grammar", slog.LevelInfo, "Order Failed", "event.invalid", "Order Failed", slog.LevelInfo},
+		{"leading digit segment", slog.LevelInfo, "order.1x", "event.invalid", "order.1x", slog.LevelInfo},
+		{"trailing dot", slog.LevelInfo, "order.", "event.invalid", "order.", slog.LevelInfo},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -102,8 +113,11 @@ func TestWorkflowEvent_LevelsAndGrammar(t *testing.T) {
 				t.Fatalf("events = %d", len(ev))
 			}
 			r := ev[0]
-			if attrOf(r, tc.key) == "" || r.Level != tc.want || len(attrOf(r, tc.key)) > 64 {
-				t.Errorf("record = %v %v", r.Level, r)
+			if got := attrOf(r, tc.key); got != tc.value || r.Level != tc.want {
+				t.Errorf("%s = %q level %v, want %q level %v", tc.key, got, r.Level, tc.value, tc.want)
+			}
+			if tc.key == "event.invalid" && attrOf(r, "event") != "" {
+				t.Error("an invalid name must not be written under event")
 			}
 			if attrOf(r, "event.conflict") != "spoof" {
 				t.Error("a caller's own event attribute must be renamed, not overwrite the name")
