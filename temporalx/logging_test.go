@@ -3,6 +3,7 @@ package temporalx
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -187,12 +188,65 @@ func TestWithLogger_RewritesTheSDKErrorKey(t *testing.T) {
 	o.Logger.Info("no error here", "Attempt", 1)
 	o.Logger.Warn("stringly error", "Error", "plain text")
 	out := buf.String()
-	for _, want := range []string{`"error.type":"PaymentDeclined"`, `"error.type":"*errors.errorString"`, `"error.message":"connection refused"`, `"ActivityType":"AuthorizePayment"`, `"Attempt":1`, `"error.message":"plain text"`} {
+	for _, want := range []string{`"error.type":"PaymentDeclined"`, `"error.type":"errors.errorString"`, `"error.message":"connection refused"`, `"ActivityType":"AuthorizePayment"`, `"Attempt":1`, `"error.message":"plain text"`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %s in %s", want, out)
 		}
 	}
 	if strings.Contains(out, `"Error":`) {
 		t.Errorf("the raw Error key must not survive: %s", out)
+	}
+}
+
+type typedNilErr struct{}
+
+func (*typedNilErr) Error() string { return "never called on nil" }
+
+type panickyErr struct{}
+
+func (panickyErr) Error() string { panic("Error() panics") }
+
+// Neither a typed-nil error nor one whose Error() panics may take the logging
+// call down with it, and a %w-wrapped error is named by its cause, as the
+// facade names it.
+func TestWithLogger_SDKErrorEdgeCases(t *testing.T) {
+	var buf strings.Builder
+	var o client.Options
+	WithLogger(slog.New(slog.NewJSONHandler(&buf, nil)))(&o)
+	var nilErr *typedNilErr
+	var nilApp *temporal.ApplicationError
+	o.Logger.Warn("typed nil", "Error", error(nilErr))
+	o.Logger.Warn("typed nil app error", "Error", error(nilApp))
+	o.Logger.Warn("panicky", "Error", panickyErr{})
+	o.Logger.Warn("wrapped", "Error", fmt.Errorf("dial: %w", errors.New("refused")))
+	o.Logger.Warn("joined", "Error", errors.Join(nil, &typedNilErr{}))
+	out := buf.String()
+	for _, want := range []string{`"error.type":"temporalx.typedNilErr"`, `"error.type":"internal.ApplicationError"`,
+		`"error.type":"temporalx.panickyErr"`, `"error.type":"errors.errorString"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %s in %s", want, out)
+		}
+	}
+	if strings.Contains(out, `"Error":`) {
+		t.Errorf("the raw Error key must not survive: %s", out)
+	}
+}
+
+// Error bound through With (user code) gets the same shape; the record keeps
+// its level, message, source and attribute order.
+func TestWithLogger_BoundErrorAndRecordShape(t *testing.T) {
+	h := &capture{}
+	var o client.Options
+	WithLogger(slog.New(h))(&o)
+	sdklog.With(o.Logger, "Error", errors.New("bound")).Info("first", "a", 1)
+	o.Logger.Error("second", "b", 2, "Error", errors.New("x"), "c", 3)
+	if len(h.recs) != 2 {
+		t.Fatalf("records = %d", len(h.recs))
+	}
+	r := h.recs[1]
+	var keys []string
+	r.Attrs(func(a slog.Attr) bool { keys = append(keys, a.Key); return true })
+	if got := strings.Join(keys, ","); got != "b,error.type,error.message,c" || r.Level != slog.LevelError || r.Message != "second" || r.PC == 0 {
+		t.Errorf("record = %v %q pc=%d keys=%s", r.Level, r.Message, r.PC, got)
 	}
 }

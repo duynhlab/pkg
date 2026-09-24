@@ -74,10 +74,10 @@ func (h spanFromAttrs) Handle(ctx context.Context, r slog.Record) error {
 
 // withErrorShape rewrites the SDK's own "Error" attribute (a raw error, on its
 // poll-failure and activity-error lines) into the platform's error shape:
-// error.type — the bounded application-error type when there is one, else the
-// Go type — and error.message. A raw error string under a key the facade does
-// not know would otherwise reach both sinks untouched. Records without it pass
-// through unchanged.
+// error.type and error.message, the keys slogx.Err writes. The message stays an
+// error value, so the facade's redactor still stringifies it — under its own
+// recover and typed-nil guard — and bounds it. A non-error value under "Error"
+// becomes error.message alone. Records without the key pass through unchanged.
 func withErrorShape(r slog.Record) slog.Record {
 	found := false
 	r.Attrs(func(a slog.Attr) bool {
@@ -92,52 +92,116 @@ func withErrorShape(r slog.Record) slog.Record {
 	}
 	out := slog.NewRecord(r.Time, r.Level, r.Message, r.PC)
 	r.Attrs(func(a slog.Attr) bool {
-		if a.Key != "Error" {
-			out.AddAttrs(a)
-			return true
-		}
-		err, ok := a.Value.Any().(error)
-		if !ok || err == nil {
-			out.AddAttrs(slog.String("error.message", a.Value.String()))
-			return true
-		}
-		out.AddAttrs(slog.String("error.type", sdkErrorType(err)), slog.String("error.message", err.Error()))
+		out.AddAttrs(errorShaped(a)...)
 		return true
 	})
 	return out
 }
 
-func sdkErrorType(err error) string {
-	var appErr *temporal.ApplicationError
-	if errors.As(err, &appErr) && appErr.Type() != "" {
-		return appErr.Type()
+// errorShaped maps one attribute: "Error" becomes error.type + error.message,
+// anything else is returned as it is.
+func errorShaped(a slog.Attr) []slog.Attr {
+	if a.Key != "Error" {
+		return []slog.Attr{a}
 	}
-	return reflect.TypeOf(err).String()
+	err, ok := a.Value.Any().(error)
+	if !ok || err == nil {
+		return []slog.Attr{slog.Any("error.message", a.Value.Any())}
+	}
+	return []slog.Attr{slog.String("error.type", sdkErrorType(err)), slog.Any("error.message", err)}
+}
+
+// sdkErrorType names an error the way slogx.ErrorType does — pointer dropped,
+// the standard library's transparent wrappers (fmt.wrapError, join) seen
+// through — so one error reads the same on Temporal lines and service lines.
+// This module does not import the facade, so the rule is mirrored here; the one
+// addition is a Temporal application error, named by its bounded Type. A
+// typed-nil error or one whose method panics is named, never followed.
+func sdkErrorType(err error) (name string) {
+	defer func() {
+		if recover() != nil {
+			name = "unknown"
+		}
+	}()
+	for i := 0; err != nil && i < 100; i++ {
+		if isTypedNil(err) {
+			return errTypeName(err)
+		}
+		var appErr *temporal.ApplicationError
+		if errors.As(err, &appErr) && !isTypedNil(appErr) && appErr.Type() != "" {
+			return appErr.Type()
+		}
+		switch u := err.(type) {
+		case interface{ Unwrap() []error }:
+			if n := errTypeName(err); n != "errors.joinError" && n != "fmt.wrapErrors" {
+				return n
+			}
+			next := error(nil)
+			for _, e := range u.Unwrap() {
+				if e != nil {
+					next = e
+					break
+				}
+			}
+			if next == nil {
+				return errTypeName(err)
+			}
+			err = next
+		case interface{ Unwrap() error }:
+			if errTypeName(err) != "fmt.wrapError" || u.Unwrap() == nil {
+				return errTypeName(err)
+			}
+			err = u.Unwrap()
+		default:
+			return errTypeName(err)
+		}
+	}
+	return "unknown"
+}
+
+func errTypeName(err error) string {
+	t := reflect.TypeOf(err)
+	if t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	return t.String()
+}
+
+func isTypedNil(v any) bool {
+	rv := reflect.ValueOf(v)
+	return rv.Kind() == reflect.Pointer && rv.IsNil()
 }
 
 func (h spanFromAttrs) WithAttrs(attrs []slog.Attr) slog.Handler {
 	cfg := trace.SpanContextConfig{TraceID: h.sc.TraceID(), SpanID: h.sc.SpanID(), TraceFlags: h.sc.TraceFlags()}
 	kept := attrs[:0:0]
-	for _, a := range attrs {
-		switch v := a.Value.Any().(type) {
-		case trace.TraceID:
-			if a.Key == "TraceID" {
-				cfg.TraceID = v
-				continue
-			}
-		case trace.SpanID:
-			if a.Key == "SpanID" {
-				cfg.SpanID = v
-				continue
-			}
+	for _, bound := range attrs {
+		for _, a := range errorShaped(bound) {
+			kept = appendLifted(kept, a, &cfg)
 		}
-		kept = append(kept, a)
 	}
 	next := h.next
 	if len(kept) > 0 {
 		next = next.WithAttrs(kept)
 	}
 	return spanFromAttrs{next: next, sc: trace.NewSpanContext(cfg)}
+}
+
+// appendLifted lifts a TraceID/SpanID attribute into cfg, or keeps it.
+func appendLifted(kept []slog.Attr, a slog.Attr, cfg *trace.SpanContextConfig) []slog.Attr {
+	switch v := a.Value.Any().(type) {
+	case trace.TraceID:
+		if a.Key == "TraceID" {
+			cfg.TraceID = v
+			return kept
+		}
+	case trace.SpanID:
+		if a.Key == "SpanID" {
+			cfg.SpanID = v
+			return kept
+		}
+	}
+	return append(kept, a)
 }
 
 func (h spanFromAttrs) WithGroup(name string) slog.Handler {
