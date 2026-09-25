@@ -153,6 +153,7 @@ Generated files (never hand-edit):
 ## Gotchas and non-obvious rules
 
 - **No top-level `go.mod`.** From the repo root, `go build ./...` and `go test ./...` fail with "go.mod file not found" — nothing at the root builds or tests the 12 modules. Always work within a module directory or use `make test-<module>`.
+- **A new minor of a telemetry module moves the fleet floor.** `obsx`, `logger/slogx`, `httpmw`, `grpcx` and `temporalx` have a version floor in the fleet lint policy (`duynhlab/gha-workflows` `.github/lint/golangci-policy.yml`, ADR-072): a service more than one minor behind fails its lint. Bump the floor to the previous minor in the same change that announces the release and say so in the release notes.
 - **Module versioning is independent.** Changing `logger/slogx` does not bump `httpx`. Tag each changed module separately at release time.
 - **Tag order matters once modules depend on each other.** Tag dependencies before dependents (Layer 0 → 1 → 2), otherwise a `require` line points at a tag that does not exist yet and external `go get` fails even though local builds pass.
 - **A pushed tag cannot be fixed.** The Go module proxy caches immediately. A wrong `obsx/v0.36.0` cannot be corrected — you must burn the version and publish `v0.36.1`. `make release-<module>` checks the module exists and the tree is clean, but it cannot check that the content is right.
