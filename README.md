@@ -152,6 +152,14 @@ dependency must be tagged first (Layer 0 → 1 → 2). Each pushed tag triggers
 the `release` workflow, which publishes a GitHub Release with generated
 notes.
 
+**Step 1b — move the fleet version floor** (ADR-072) when the release is a
+new minor of a telemetry module (`obsx`, `logger/slogx`, `httpmw`, `grpcx`,
+`temporalx`): the fleet lint policy in `duynhlab/gha-workflows`
+(`.github/lint/golangci-policy.yml`, `gomodguard_v2`) blocks a service more
+than one minor behind, so bump that module's floor to the previous minor in
+the same change that announces the release, and name the floor in the release
+notes. Every service runs the policy as a blocking lint pass.
+
 **Step 2 — verify:**
 
 ```bash
