@@ -267,6 +267,12 @@ groups:
     brief: The count of notifications on span, written by notification.
     examples:
     - 1
+  - id: notifications.affected
+    type: int
+    stability: development
+    brief: The number of notifications a bulk action (mark read, clear) changed, on span, written by notification.
+    examples:
+    - 3
 - id: registry.order
   type: attribute_group
   display_name: order attributes
@@ -388,6 +394,18 @@ groups:
     brief: Rows affected by a Postgres statement, from otelpgx.
     examples:
     - 1
+  - id: pgx.sql_state
+    type: string
+    stability: development
+    brief: The PostgreSQL SQLSTATE code otelpgx writes on a failed query span.
+    examples:
+    - '23505'
+  - id: pgx.prepare_stmt.name
+    type: string
+    stability: development
+    brief: The prepared-statement name otelpgx writes on a prepare span.
+    examples:
+    - stmt_1
 - id: registry.processing
   type: attribute_group
   display_name: processing attributes
