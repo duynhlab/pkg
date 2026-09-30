@@ -43,7 +43,17 @@ type config struct {
 	meterProvider   metric.MeterProvider
 	passwordFile    string
 	maxConnLifetime time.Duration
+	pingTimeout     *time.Duration // nil = defaultPingTimeout unless the DSN set one
 }
+
+// defaultPingTimeout bounds the liveness ping pgxpool sends before handing out
+// a connection that has sat idle for over a second. pgx's own default is no
+// timeout, so a half-open TCP connection (pooler restart, lost node) would
+// hold Acquire until the request context or TCP keepalive gave up. In-cluster
+// pooler round trips are milliseconds; 2s only trips on a dead connection,
+// which pgxpool then destroys and replaces. A false positive costs one
+// reconnect.
+const defaultPingTimeout = 2 * time.Second
 
 // Option customizes NewPool.
 type Option func(*config)
@@ -103,6 +113,33 @@ func WithMaxConnLifetime(d time.Duration) Option {
 	}
 }
 
+// WithPingTimeout overrides how long pgxpool waits for the pre-acquire ping
+// before it treats the connection as dead (pgxpool Config.PingTimeout). The
+// default is defaultPingTimeout; 0 restores pgx's no-timeout behaviour and a
+// negative value is treated as 0. An explicit option wins over a
+// pool_ping_timeout parameter in the DSN.
+func WithPingTimeout(d time.Duration) Option {
+	return func(c *config) {
+		if d < 0 {
+			d = 0
+		}
+		c.pingTimeout = &d
+	}
+}
+
+// applyPingTimeout sets poolCfg.PingTimeout: an explicit WithPingTimeout wins,
+// then a positive pool_ping_timeout from the DSN, then defaultPingTimeout.
+func applyPingTimeout(poolCfg *pgxpool.Config, cfg config) {
+	switch {
+	case cfg.pingTimeout != nil:
+		poolCfg.PingTimeout = *cfg.pingTimeout
+	case poolCfg.PingTimeout > 0:
+		// pool_ping_timeout in the DSN
+	default:
+		poolCfg.PingTimeout = defaultPingTimeout
+	}
+}
+
 // NewPool parses dsn, applies the transaction-mode-pooler-safe settings and the
 // RFC-0017 telemetry defaults, opens the pool, registers pool-stat metrics and
 // pings. It returns a ready *pgxpool.Pool or an error; on any post-open failure
@@ -129,6 +166,7 @@ func NewPool(ctx context.Context, dsn string, opts ...Option) (*pgxpool.Pool, er
 	if cfg.maxConns > 0 {
 		poolCfg.MaxConns = cfg.maxConns
 	}
+	applyPingTimeout(poolCfg, cfg)
 
 	// D-5: transaction-mode pooler safety (PgDog/PgBouncer). Simple protocol
 	// avoids server-side prepared statements; caches off because prepared
