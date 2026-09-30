@@ -4,7 +4,7 @@ go 1.26.7
 
 require (
 	github.com/exaring/otelpgx v0.11.1
-	github.com/jackc/pgx/v5 v5.10.0
+	github.com/jackc/pgx/v5 v5.11.0
 	github.com/testcontainers/testcontainers-go v0.43.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.43.0
 	go.opentelemetry.io/otel/metric v1.46.0

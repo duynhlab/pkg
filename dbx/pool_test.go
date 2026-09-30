@@ -5,6 +5,8 @@ import (
 	"math"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // A DSN pgx cannot parse must surface as an error, not a panic or a nil pool.
@@ -82,6 +84,41 @@ func TestWithMaxConnLifetime_Clamp(t *testing.T) {
 			WithMaxConnLifetime(tt.in)(&c)
 			if c.maxConnLifetime != tt.want {
 				t.Errorf("WithMaxConnLifetime(%v) => %v, want %v", tt.in, c.maxConnLifetime, tt.want)
+			}
+		})
+	}
+}
+
+// applyPingTimeout resolves Config.PingTimeout in precedence order: an explicit
+// WithPingTimeout, then a positive pool_ping_timeout in the DSN, then the 2s
+// default. Zero via the option disables the timeout; a negative option is 0.
+func TestApplyPingTimeout(t *testing.T) {
+	opt := func(d time.Duration) config {
+		var c config
+		WithPingTimeout(d)(&c)
+		return c
+	}
+	tests := []struct {
+		name string
+		dsn  string
+		cfg  config
+		want time.Duration
+	}{
+		{"default", "postgres://u@h/db", config{}, defaultPingTimeout},
+		{"dsn wins over default", "postgres://u@h/db?pool_ping_timeout=5s", config{}, 5 * time.Second},
+		{"option wins over dsn", "postgres://u@h/db?pool_ping_timeout=5s", opt(750 * time.Millisecond), 750 * time.Millisecond},
+		{"option zero disables", "postgres://u@h/db", opt(0), 0},
+		{"option negative is zero", "postgres://u@h/db", opt(-time.Second), 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pc, err := pgxpool.ParseConfig(tt.dsn)
+			if err != nil {
+				t.Fatalf("ParseConfig(%q): %v", tt.dsn, err)
+			}
+			applyPingTimeout(pc, tt.cfg)
+			if pc.PingTimeout != tt.want {
+				t.Errorf("PingTimeout = %v, want %v", pc.PingTimeout, tt.want)
 			}
 		})
 	}
