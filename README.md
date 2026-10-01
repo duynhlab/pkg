@@ -19,10 +19,7 @@ go get github.com/duynhlab/pkg/logger/slogx@v0.2.0 # tag: logger/slogx/v0.2.0
 
 Module tags continue the pre-split numbering (the last single-module tag was
 `v0.35.0`); a module first published after the split starts its own history at
-`v0.1.0` (`httpmw`, `logger/slogx`). Migrating a service from the single-module `pkg`? See
-[docs/MIGRATION.md](docs/MIGRATION.md) — import paths don't change, only
-`go.mod` does. How the fleet moved its logging from `logger/zapx` to the
-facade: [docs/MIGRATION-slogx.md](docs/MIGRATION-slogx.md).
+`v0.1.0` (`httpmw`, `logger/slogx`).
 
 ## Modules
 

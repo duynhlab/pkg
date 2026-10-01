@@ -1,6 +1,6 @@
 module github.com/duynhlab/pkg/logger/slogx
 
-go 1.26.7
+go 1.27.1
 
 require (
 	go.opentelemetry.io/contrib/bridges/otelslog v0.20.1

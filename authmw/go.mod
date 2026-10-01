@@ -1,6 +1,6 @@
 module github.com/duynhlab/pkg/authmw
 
-go 1.26.7
+go 1.27.1
 
 require (
 	github.com/MicahParks/jwkset v0.11.0
