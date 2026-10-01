@@ -1,6 +1,6 @@
 module github.com/duynhlab/pkg/obsx
 
-go 1.26.7
+go 1.27.1
 
 require (
 	github.com/grafana/otel-profiling-go v0.6.0
