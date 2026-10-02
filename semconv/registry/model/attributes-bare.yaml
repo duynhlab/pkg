@@ -195,6 +195,12 @@ groups:
     brief: Examined on log, written by order.
     examples:
     - 1
+  - id: failure_reason
+    type: string
+    stability: development
+    brief: Why a Temporal activity execution failed, on the SDK's activity failure counter (SDK >= 1.49).
+    examples:
+    - ActivityError
   - id: found
     type: boolean
     stability: development
