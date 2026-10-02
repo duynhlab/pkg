@@ -180,6 +180,7 @@ groups:
   attributes:
   - ref: activity_type
   - ref: client_name
+  - ref: failure_reason
   - ref: namespace
   - ref: task_queue
   - ref: worker_type
