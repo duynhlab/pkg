@@ -492,6 +492,25 @@ groups:
   - ref: workflow_type
   annotations:
     origin: vendor
+- id: metric.temporal_request_resource_exhausted
+  type: metric
+  metric_name: temporal_request_resource_exhausted
+  instrument: counter
+  unit: ''
+  stability: development
+  brief: Emitted by a library the fleet runs (temporal).
+  attributes:
+  - ref: activity_type
+  - ref: cause
+  - ref: client_name
+  - ref: namespace
+  - ref: operation
+  - ref: status_code
+  - ref: task_queue
+  - ref: worker_type
+  - ref: workflow_type
+  annotations:
+    origin: vendor
 - id: metric.temporal_sticky_cache_hit
   type: metric
   metric_name: temporal_sticky_cache_hit
