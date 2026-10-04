@@ -97,6 +97,12 @@ groups:
     brief: Whether a mockpay charge is captured.
     examples:
     - true
+  - id: cause
+    type: string
+    stability: development
+    brief: Why the Temporal server rejected a request as ResourceExhausted (e.g. BusyWorkflow, RpsLimit), on the SDK's resource-exhausted counter.
+    examples:
+    - BusyWorkflow
   - id: channel
     type: string
     stability: development
