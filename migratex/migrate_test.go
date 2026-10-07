@@ -110,3 +110,16 @@ func TestRun_NilOptionIgnored(t *testing.T) {
 		t.Fatal("Run(nil option, missing dir) = nil, want source error")
 	}
 }
+
+// A malformed DSN must not echo its password into the error, which callers
+// log.
+func TestRun_WithSetRoleParseErrorRedactsPassword(t *testing.T) {
+	fsys := fstest.MapFS{"sql/0001_init.up.sql": {Data: []byte("SELECT 1;")}}
+	err := Run(fsys, "sql", "postgres://u:s3cr3t@h:5432/db%zz", WithSetRole("owner"))
+	if err == nil {
+		t.Fatal("Run(bad dsn) = nil, want error")
+	}
+	if strings.Contains(err.Error(), "s3cr3t") {
+		t.Fatalf("error leaks the password: %v", err)
+	}
+}
