@@ -103,7 +103,13 @@ func newWithRole(src source.Driver, dsn, role string) (*migrate.Migrate, error) 
 	pgDSN := postgresURL(dsn)
 	u, err := url.Parse(pgDSN)
 	if err != nil {
-		return nil, fmt.Errorf("migratex: parse dsn: %w", err)
+		// *url.Error embeds the whole URL, password included: keep only the
+		// reason.
+		var uerr *url.Error
+		if errors.As(err, &uerr) {
+			err = uerr.Err
+		}
+		return nil, fmt.Errorf("migratex: parse dsn: %v", err)
 	}
 	for k := range u.Query() {
 		if strings.HasPrefix(k, "x-") {
