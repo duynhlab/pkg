@@ -493,6 +493,22 @@ groups:
   brief: Provider transactions outside the window the pass asked for — a provider ignoring its bounds
     can manufacture phantom missing_internal discrepancies (first GameDay, F1), so violating rows are
     excluded and the watermark holds
+- id: metric.pgx.pool.acquire.evictions
+  type: metric
+  metric_name: pgx.pool.acquire.evictions
+  instrument: counter
+  unit: '{connection}'
+  stability: development
+  brief: Pooled connections found closed by the server at acquire and replaced (dbx acquire check); connections idle over 1s are replaced by the pgxpool ping and not counted here
+- id: metric.pgx.pool.connect.failures
+  type: metric
+  metric_name: pgx.pool.connect.failures
+  instrument: counter
+  unit: '{connection}'
+  stability: development
+  brief: Connections the pool failed to open, by error.type (SQLSTATE or connect)
+  attributes:
+  - ref: error.type
 - id: metric.product.cache.gets
   type: metric
   metric_name: product.cache.gets
