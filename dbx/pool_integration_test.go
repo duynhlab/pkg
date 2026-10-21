@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -248,5 +249,86 @@ func TestNewPool_PoolerSafeConfig(t *testing.T) {
 	}
 	if cfg.MaxConns != 7 {
 		t.Errorf("MaxConns = %d, want 7", cfg.MaxConns)
+	}
+}
+
+// killIdleConn runs one query on a single-connection pool, then terminates
+// that backend from a second session. The server sends FATAL 57P01 and closes
+// the socket — the shape PgDog gives its idle clients when it shuts down
+// (duynhlab/pkg#124). The short wait lets the FATAL land in the client's
+// receive buffer while staying well under pgxpool's 1 s idle-ping threshold.
+func killIdleConn(t *testing.T, dsn string, pool *pgxpool.Pool) {
+	t.Helper()
+	ctx := context.Background()
+	var pid int32
+	if err := pool.QueryRow(ctx, "select pg_backend_pid()").Scan(&pid); err != nil {
+		t.Fatalf("backend pid: %v", err)
+	}
+	admin, err := pgx.Connect(ctx, dsn)
+	if err != nil {
+		t.Fatalf("admin connect: %v", err)
+	}
+	defer admin.Close(ctx)
+	var ok bool
+	if err := admin.QueryRow(ctx, "select pg_terminate_backend($1)", pid).Scan(&ok); err != nil || !ok {
+		t.Fatalf("terminate backend %d: ok=%v err=%v", pid, ok, err)
+	}
+	time.Sleep(200 * time.Millisecond)
+}
+
+// A pooled connection the server closed while it sat idle is evicted at
+// acquire and replaced, so the next query succeeds and the eviction is counted.
+func TestNewPool_EvictsConnectionClosedWhileIdle(t *testing.T) {
+	dsn := startPostgres(t)
+	reader := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	pool, err := NewPool(context.Background(), dsn, WithMaxConns(1), WithMeterProvider(mp))
+	if err != nil {
+		t.Fatalf("NewPool: %v", err)
+	}
+	defer pool.Close()
+
+	killIdleConn(t, dsn, pool)
+
+	var one int
+	if err := pool.QueryRow(context.Background(), "select 1").Scan(&one); err != nil {
+		t.Fatalf("query after the server closed the pooled connection: %v", err)
+	}
+	if got := counterByAttr(t, reader, metricAcquireEvictions, "")[""]; got < 1 {
+		t.Errorf("evictions = %d, want >= 1", got)
+	}
+}
+
+// Control for the test above: with the check off, the same query fails on the
+// dead connection, which is the failure the check exists to prevent.
+func TestNewPool_AcquireCheckOffFailsOnClosedConnection(t *testing.T) {
+	dsn := startPostgres(t)
+	pool, err := NewPool(context.Background(), dsn, WithMaxConns(1), WithAcquireCheck(false))
+	if err != nil {
+		t.Fatalf("NewPool: %v", err)
+	}
+	defer pool.Close()
+
+	killIdleConn(t, dsn, pool)
+
+	if _, err := pool.Exec(context.Background(), "select 1"); err == nil {
+		t.Fatal("query on the closed connection succeeded; the control no longer reproduces the failure")
+	}
+}
+
+// A connection the server refuses is counted by its SQLSTATE.
+func TestNewPool_CountsConnectFailures(t *testing.T) {
+	dsn := startPostgres(t)
+	reader := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	bad := strings.Replace(dsn, "app:secret@", "app:wrong@", 1)
+	if bad == dsn {
+		t.Fatalf("DSN %q has no app:secret@ to replace", dsn)
+	}
+	if _, err := NewPool(context.Background(), bad, WithMeterProvider(mp)); err == nil {
+		t.Fatal("NewPool with a wrong password succeeded")
+	}
+	if got := counterByAttr(t, reader, metricConnectFailures, "error.type")["28P01"]; got < 1 {
+		t.Errorf("connect failures{error.type=28P01} = %d, want >= 1", got)
 	}
 }
