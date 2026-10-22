@@ -332,3 +332,69 @@ func TestNewPool_CountsConnectFailures(t *testing.T) {
 		t.Errorf("connect failures{error.type=28P01} = %d, want >= 1", got)
 	}
 }
+
+// An idle connection past MaxConnLifetime is replaced by the next health check,
+// so lifetime + HealthCheckPeriod bounds how long a client stays on one pooler
+// pod (the PgDog preStop drain, duynhlab/homelab#1350).
+func TestNewPool_HealthCheckRetiresIdleConnectionPastLifetime(t *testing.T) {
+	dsn := startPostgres(t)
+	pool, err := NewPool(context.Background(), dsn, WithMaxConns(1),
+		WithMaxConnLifetime(time.Second), WithHealthCheckPeriod(200*time.Millisecond))
+	if err != nil {
+		t.Fatalf("NewPool: %v", err)
+	}
+	defer pool.Close()
+	ctx := context.Background()
+	var before, after int32
+	if err := pool.QueryRow(ctx, "select pg_backend_pid()").Scan(&before); err != nil {
+		t.Fatalf("first pid: %v", err)
+	}
+	// Read the counter before the next acquire, so only the idle health check
+	// can have retired the connection (lifetime x 1.1 + period, polled).
+	deadline := time.Now().Add(5 * time.Second)
+	for pool.Stat().MaxLifetimeDestroyCount() < 1 {
+		if time.Now().After(deadline) {
+			t.Fatal("idle connection not retired by the health check within 5s")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if err := pool.QueryRow(ctx, "select pg_backend_pid()").Scan(&after); err != nil {
+		t.Fatalf("second pid: %v", err)
+	}
+	if before == after {
+		t.Errorf("backend pid unchanged (%d): the idle connection outlived its lifetime", before)
+	}
+}
+
+// WithPoolName labels the pgxpool.* series, so two pools in one service stay apart.
+func TestNewPool_PoolNameLabelsStats(t *testing.T) {
+	dsn := startPostgres(t)
+	reader := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	pool, err := NewPool(context.Background(), dsn, WithMeterProvider(mp), WithPoolName("product-replica"))
+	if err != nil {
+		t.Fatalf("NewPool: %v", err)
+	}
+	defer pool.Close()
+	var rm metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &rm); err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != "pgxpool.max_connections" {
+				continue
+			}
+			g, ok := m.Data.(metricdata.Gauge[int64])
+			if !ok || len(g.DataPoints) == 0 {
+				t.Fatalf("pgxpool.max_connections is %T with no points", m.Data)
+			}
+			v, _ := g.DataPoints[0].Attributes.Value("db.client.connection.pool.name")
+			if v.AsString() != "product-replica" {
+				t.Fatalf("pool name = %q, want product-replica", v.AsString())
+			}
+			return
+		}
+	}
+	t.Fatal("pgxpool.max_connections not recorded")
+}

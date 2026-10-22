@@ -50,7 +50,17 @@ type config struct {
 	maxConnLifetime time.Duration
 	pingTimeout     *time.Duration // nil = defaultPingTimeout unless the DSN set one
 	noAcquireCheck  bool
+	healthCheck     time.Duration
+	connectTimeout  *time.Duration // nil = defaultConnectTimeout unless the DSN set one
+	poolName        string
 }
+
+// defaultConnectTimeout bounds one connection attempt. pgxpool's own default is
+// two minutes, and it dials on a context detached from the caller, so a hung
+// dial keeps a MaxConns slot long after the request gave up (duynhlab/homelab
+// #1350). 10s still covers a first passthrough login on a cold PgDog pod, which
+// can take its checkout_timeout (5s).
+const defaultConnectTimeout = 10 * time.Second
 
 // defaultPingTimeout bounds the liveness ping pgxpool sends before handing out
 // a connection that has sat idle for over a second. pgx's own default is no
@@ -137,6 +147,43 @@ func WithPingTimeout(d time.Duration) Option {
 	}
 }
 
+// WithHealthCheckPeriod sets how often pgxpool checks idle connections (pgxpool
+// HealthCheckPeriod, default 1m). An idle connection past MaxConnLifetime is
+// closed only by this check, so an idle connection lives at most
+// lifetime × 1.1 (dbx's jitter) + period: keep that below a pooler's preStop
+// drain so clients leave a pod before it shuts down. Values <= 0 are ignored.
+func WithHealthCheckPeriod(d time.Duration) Option {
+	return func(c *config) {
+		if d > 0 {
+			c.healthCheck = d
+		}
+	}
+}
+
+// WithConnectTimeout bounds one connection attempt (pgx ConnectTimeout). The
+// default is defaultConnectTimeout; an explicit option wins over a
+// connect_timeout parameter in the DSN, and 0 restores pgxpool's two minutes.
+// A negative value is treated as 0. A DSN connect_timeout also fixes pgconn's
+// TCP dial timeout, which this option does not change, so leave it out of the
+// DSN when the option is used.
+func WithConnectTimeout(d time.Duration) Option {
+	return func(c *config) {
+		if d < 0 {
+			d = 0
+		}
+		c.connectTimeout = &d
+	}
+}
+
+// WithPoolName labels the pool's pgxpool.* metrics with
+// db.client.connection.pool.name. otelpgx's default name is host:port/db, so
+// two pools on the same pooler address (a primary pool and an opt-in replica
+// profile through PgDog) would report one merged series without it. Empty
+// keeps the default.
+func WithPoolName(name string) Option {
+	return func(c *config) { c.poolName = name }
+}
+
 // WithAcquireCheck turns the pre-acquire dead-connection check on (the
 // default) or off. See acquireCheck for what it catches; turn it off only to
 // compare behaviour in a test.
@@ -220,6 +267,19 @@ func acquireCheck(evictions metric.Int64Counter) func(context.Context, *pgx.Conn
 	}
 }
 
+// applyConnectTimeout sets ConnConfig.ConnectTimeout: an explicit
+// WithConnectTimeout wins, then a connect_timeout from the DSN, then
+// defaultConnectTimeout.
+func applyConnectTimeout(poolCfg *pgxpool.Config, cfg config) {
+	switch {
+	case cfg.connectTimeout != nil:
+		poolCfg.ConnConfig.ConnectTimeout = *cfg.connectTimeout
+	case poolCfg.ConnConfig.ConnectTimeout > 0:
+	default:
+		poolCfg.ConnConfig.ConnectTimeout = defaultConnectTimeout
+	}
+}
+
 // applyPingTimeout sets poolCfg.PingTimeout: an explicit WithPingTimeout wins,
 // then a positive pool_ping_timeout from the DSN, then defaultPingTimeout.
 func applyPingTimeout(poolCfg *pgxpool.Config, cfg config) {
@@ -260,6 +320,10 @@ func NewPool(ctx context.Context, dsn string, opts ...Option) (*pgxpool.Pool, er
 		poolCfg.MaxConns = cfg.maxConns
 	}
 	applyPingTimeout(poolCfg, cfg)
+	applyConnectTimeout(poolCfg, cfg)
+	if cfg.healthCheck > 0 {
+		poolCfg.HealthCheckPeriod = cfg.healthCheck
+	}
 
 	// D-5: transaction-mode pooler safety (PgDog/PgBouncer). Simple protocol
 	// avoids server-side prepared statements; caches off because prepared
@@ -357,6 +421,9 @@ func NewPool(ctx context.Context, dsn string, opts ...Option) (*pgxpool.Pool, er
 	var statsOpts []otelpgx.StatsOption
 	if cfg.meterProvider != nil {
 		statsOpts = append(statsOpts, otelpgx.WithStatsMeterProvider(cfg.meterProvider))
+	}
+	if cfg.poolName != "" {
+		statsOpts = append(statsOpts, otelpgx.WithStatsAttributes(attribute.String("db.client.connection.pool.name", cfg.poolName)))
 	}
 	if err := otelpgx.RecordStats(pool, statsOpts...); err != nil {
 		pool.Close()
