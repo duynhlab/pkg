@@ -7,6 +7,8 @@ import rego.v1
 # names its owner here; nothing is added at a call site. Single-segment keys
 # are not namespaced (owner decision 2026-09-24) — they only have to be defined.
 platform_namespaces := {
+	# analytics-service owns the commerce read-model telemetry (ADR-069)
+	"analytics",
 	# the domain services
 	"cart", "checkout", "inventory", "notification", "order", "payment",
 	"product", "review", "shipping", "user",
