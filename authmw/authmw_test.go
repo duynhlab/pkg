@@ -341,6 +341,12 @@ func TestMiddlewareJWT(t *testing.T) {
 			if w.Code != tt.wantStatus {
 				t.Errorf("status = %d, want %d (body %s)", w.Code, tt.wantStatus, w.Body.String())
 			}
+			switch tt.wantStatus {
+			case http.StatusUnauthorized:
+				assertErrorCode(t, w, "UNAUTHORIZED")
+			case http.StatusServiceUnavailable:
+				assertErrorCode(t, w, "AUTH_UNAVAILABLE")
+			}
 			if tt.wantUserID != "" && gotUserID != tt.wantUserID {
 				t.Errorf("user_id = %q, want %q", gotUserID, tt.wantUserID)
 			}
@@ -383,6 +389,18 @@ func TestMiddlewareJWT_TransientKeyFetch(t *testing.T) {
 
 	if w.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d (body %s)", w.Code, http.StatusServiceUnavailable, w.Body.String())
+	}
+	assertErrorCode(t, w, "AUTH_UNAVAILABLE")
+}
+
+func assertErrorCode(t *testing.T, w *httptest.ResponseRecorder, want string) {
+	t.Helper()
+	var body map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if body["code"] != want || body["error"] == "" {
+		t.Errorf("error envelope = %v, want code %q and nonempty error", body, want)
 	}
 }
 

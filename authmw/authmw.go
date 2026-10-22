@@ -47,6 +47,12 @@ const msgInvalidToken = "Invalid or expired token"
 // here rather than imported.
 const codeForbidden = "FORBIDDEN"
 
+// CodeUnauthorized identifies rejected or missing credentials in HTTP 401 responses.
+const CodeUnauthorized = "UNAUTHORIZED"
+
+// CodeAuthUnavailable identifies a verifier or JWKS outage in HTTP 503 responses.
+const CodeAuthUnavailable = "AUTH_UNAVAILABLE"
+
 // Defaults applied by NewVerifier for optional Config fields.
 const (
 	// defaultRequiredAlgorithm pins RS256 unless overridden, defending against
@@ -276,12 +282,12 @@ func MiddlewareJWT(verifier *Verifier) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authz := c.GetHeader("Authorization")
 		if authz == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication required", "code": CodeUnauthorized})
 			return
 		}
 
 		if verifier == nil {
-			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "Authentication temporarily unavailable"})
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "Authentication temporarily unavailable", "code": CodeAuthUnavailable})
 			return
 		}
 
@@ -289,7 +295,7 @@ func MiddlewareJWT(verifier *Verifier) gin.HandlerFunc {
 		// rejected outright (opaque tokens are no longer a credential).
 		tok := bearerToken(authz)
 		if strings.Count(tok, ".") != 2 {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": msgInvalidToken})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": msgInvalidToken, "code": CodeUnauthorized})
 			return
 		}
 
@@ -337,10 +343,10 @@ func authenticateJWT(c *gin.Context, verifier *Verifier, tok string) {
 	claims, err := verifier.verify(tok)
 	if err != nil {
 		if errors.Is(err, errTransient) {
-			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "Authentication temporarily unavailable"})
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "Authentication temporarily unavailable", "code": CodeAuthUnavailable})
 			return
 		}
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": msgInvalidToken})
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": msgInvalidToken, "code": CodeUnauthorized})
 		return
 	}
 	c.Set(CtxUserID, claims.sub)
