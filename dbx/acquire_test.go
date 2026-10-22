@@ -164,3 +164,51 @@ func TestSocketIdle(t *testing.T) {
 		t.Error("a TCPConn with no descriptor must be reported unknown")
 	}
 }
+
+// pgconn's background reader can sit in a blocking Read on an idle socket.
+// socketIdle must still answer at once instead of waiting for that Read's lock
+// (the Read-based peek in dbx v0.39.0–v0.40.0 hung here forever).
+func TestSocketIdleWhileAnotherReadBlocks(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	client, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	server, err := ln.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
+
+	readDone := make(chan struct{})
+	go func() {
+		defer close(readDone)
+		_, _ = client.Read(make([]byte, 1)) // blocks: the server sends nothing yet
+	}()
+	time.Sleep(50 * time.Millisecond) // let the Read take the descriptor's read lock
+
+	type result struct{ idle, known bool }
+	got := make(chan result, 1)
+	go func() {
+		idle, known := socketIdle(client)
+		got <- result{idle, known}
+	}()
+	select {
+	case r := <-got:
+		if !r.known || !r.idle {
+			t.Errorf("socketIdle = idle %v, known %v; want an idle, known socket", r.idle, r.known)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("socketIdle blocked behind a concurrent Read")
+	}
+
+	if _, err := server.Write([]byte{'Z'}); err != nil { // release the reader
+		t.Fatal(err)
+	}
+	<-readDone
+}
