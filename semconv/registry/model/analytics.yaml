@@ -1,0 +1,100 @@
+# Owned by analytics-service. Register before the RFC-0030 first release.
+groups:
+- id: registry.analytics
+  type: attribute_group
+  display_name: Analytics attributes
+  brief: Bounded commerce read-model diagnostics owned by analytics-service.
+  attributes:
+  - id: analytics.source.name
+    stability: development
+    brief: Source database whose target-observed heartbeat is measured.
+    type:
+      members:
+      - id: order
+        stability: development
+        value: order
+        brief: Order database.
+      - id: checkout
+        stability: development
+        value: checkout
+        brief: Checkout database.
+      - id: payment
+        stability: development
+        value: payment
+        brief: Payment database.
+  - id: analytics.source.state
+    stability: development
+    brief: Freshness state at collection time; unknown means no valid observation.
+    type:
+      members:
+      - id: healthy
+        stability: development
+        value: healthy
+        brief: Heartbeat age at most 120 seconds.
+      - id: stale
+        stability: development
+        value: stale
+        brief: Heartbeat age above 120 and at most 300 seconds.
+      - id: unavailable
+        stability: development
+        value: unavailable
+        brief: Valid heartbeat older than 300 seconds.
+      - id: unknown
+        stability: development
+        value: unknown
+        brief: Invalid or missing heartbeat, failed query, or expired sampler snapshot.
+  - id: analytics.unavailable.reason
+    stability: development
+    brief: Sanitized failure reason on analytics operation spans, never a metric dimension.
+    type:
+      members:
+      - id: freshness
+        stability: development
+        value: freshness
+        brief: Response freshness could not be certified.
+      - id: query
+        stability: development
+        value: query
+        brief: Database operation failed.
+      - id: timeout
+        stability: development
+        value: timeout
+        brief: Operation deadline exceeded.
+      - id: limits
+        stability: development
+        value: limits
+        brief: Database resource limit exceeded.
+      - id: validation
+        stability: development
+        value: validation
+        brief: Serving data failed validation.
+      - id: cancelled
+        stability: development
+        value: cancelled
+        brief: Caller cancelled the operation.
+- id: metric.analytics.source.lag
+  type: metric
+  metric_name: analytics.source.lag
+  instrument: gauge
+  unit: s
+  stability: development
+  brief: Current target-observed heartbeat age; omitted when the sampler snapshot is invalid or older than 65 seconds.
+  attributes:
+  - ref: analytics.source.name
+- id: metric.analytics.source.state
+  type: metric
+  metric_name: analytics.source.state
+  instrument: gauge
+  unit: '1'
+  stability: development
+  brief: One-hot freshness state; all four states emitted for each source, exactly one is 1.
+  attributes:
+  - ref: analytics.source.name
+  - ref: analytics.source.state
+- id: metric.analytics.freshness.last_success.time
+  type: metric
+  metric_name: analytics.freshness.last_success.time
+  instrument: gauge
+  unit: s
+  stability: development
+  brief: Unix time of the last fully valid three-source heartbeat read; omitted before the first valid read.

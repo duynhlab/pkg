@@ -28,6 +28,8 @@ groups:
   - ref: code.function.name
   - ref: code.line.number
   - ref: db.client.connection.pool.name
+  - ref: db.namespace
+  - ref: db.query.summary
   - ref: db.operation.name
   - ref: db.query.text
   - ref: db.system.name
