@@ -123,3 +123,56 @@ func TestApplyPingTimeout(t *testing.T) {
 		})
 	}
 }
+
+// An explicit WithConnectTimeout wins, then connect_timeout in the DSN, then
+// defaultConnectTimeout — never pgxpool's two-minute fallback.
+func TestApplyConnectTimeout(t *testing.T) {
+	opt := func(d time.Duration) config {
+		var c config
+		WithConnectTimeout(d)(&c)
+		return c
+	}
+	tests := []struct {
+		name string
+		dsn  string
+		cfg  config
+		want time.Duration
+	}{
+		{"default", "postgres://u@h/db", config{}, defaultConnectTimeout},
+		{"dsn wins over default", "postgres://u@h/db?connect_timeout=3", config{}, 3 * time.Second},
+		{"option wins over dsn", "postgres://u@h/db?connect_timeout=3", opt(1500 * time.Millisecond), 1500 * time.Millisecond},
+		{"option zero restores pgxpool", "postgres://u@h/db", opt(0), 0},
+		{"option negative is zero", "postgres://u@h/db", opt(-time.Second), 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pc, err := pgxpool.ParseConfig(tt.dsn)
+			if err != nil {
+				t.Fatalf("ParseConfig(%q): %v", tt.dsn, err)
+			}
+			applyConnectTimeout(pc, tt.cfg)
+			if pc.ConnConfig.ConnectTimeout != tt.want {
+				t.Errorf("ConnectTimeout = %v, want %v", pc.ConnConfig.ConnectTimeout, tt.want)
+			}
+		})
+	}
+}
+
+// WithHealthCheckPeriod keeps a positive period and ignores the rest; WithPoolName
+// records the name. Pure option logic.
+func TestWithHealthCheckPeriodAndPoolName(t *testing.T) {
+	for _, tt := range []struct {
+		in, want time.Duration
+	}{{10 * time.Second, 10 * time.Second}, {0, 0}, {-time.Second, 0}} {
+		var c config
+		WithHealthCheckPeriod(tt.in)(&c)
+		if c.healthCheck != tt.want {
+			t.Errorf("WithHealthCheckPeriod(%v) => %v, want %v", tt.in, c.healthCheck, tt.want)
+		}
+	}
+	var c config
+	WithPoolName("product-replica")(&c)
+	if c.poolName != "product-replica" {
+		t.Errorf("WithPoolName => %q", c.poolName)
+	}
+}
