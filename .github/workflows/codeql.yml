@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   go:
-    uses: duynhlab/gha-workflows/.github/workflows/codeql.yml@cc687b8a22c98ea19f33ca10f1958b47bf1b01ec # main # main
+    uses: duynhlab/gha-workflows/.github/workflows/codeql.yml@33b9ec623c4a61dd1e107cd715ccdff1ca28ab78 # main # main
     permissions:
       actions: read
       contents: read
@@ -30,7 +30,7 @@ jobs:
       go-version-file: obsx/go.mod # any module works: all pin the same go directive
 
   actions:
-    uses: duynhlab/gha-workflows/.github/workflows/codeql.yml@cc687b8a22c98ea19f33ca10f1958b47bf1b01ec # main # main
+    uses: duynhlab/gha-workflows/.github/workflows/codeql.yml@33b9ec623c4a61dd1e107cd715ccdff1ca28ab78 # main # main
     permissions:
       actions: read
       contents: read
